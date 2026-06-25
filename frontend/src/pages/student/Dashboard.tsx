@@ -19,14 +19,19 @@ const API_URL = 'http://localhost:5000/api';
 export const StudentDashboard: React.FC = () => {
   const { user, studentProfile, refreshProfile } = useAuth();
   const [data, setData] = useState<any>(null);
+  const [workloadData, setWorkloadData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const loadDashboard = async () => {
       try {
         await refreshProfile(); // Refresh profile state to sync XP
-        const response = await axios.get(`${API_URL}/analytics/student`);
-        setData(response.data);
+        const [studentRes, workloadRes] = await Promise.all([
+          axios.get(`${API_URL}/analytics/student`),
+          axios.get(`${API_URL}/analytics/workload`)
+        ]);
+        setData(studentRes.data);
+        setWorkloadData(workloadRes.data);
       } catch (err) {
         console.error('Failed to load student dashboard:', err);
       } finally {
@@ -180,7 +185,7 @@ export const StudentDashboard: React.FC = () => {
                     <div className="flex items-center space-x-3">
                       <span
                         className={`text-xs font-bold px-2.5 py-1 rounded-full ${
-                          doubt.status === 'resolved'
+                          ['peer_solved', 'ai_hinted', 'teacher_solved'].includes(doubt.status)
                             ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400'
                             : doubt.status === 'escalated'
                             ? 'bg-red-50 text-red-600 dark:bg-red-950/20 dark:text-red-400'
@@ -243,7 +248,45 @@ export const StudentDashboard: React.FC = () => {
 
         {/* Right Column: Subject reputation & Streaks overview */}
         <div className="space-y-6">
-          {/* Subject Reputation */}
+          {/* Your Impact Card */}
+          <div className="rounded-2xl border border-brand-500/20 bg-brand-50/15 p-6 shadow-sm dark:bg-slate-900/50 dark:border-slate-800 space-y-4">
+            <h3 className="text-base font-black text-brand-850 dark:text-brand-400 flex items-center space-x-1.5">
+              <Sparkles className="h-5 w-5 text-brand-600 animate-float" />
+              <span>Your Impact This Week</span>
+            </h3>
+            <div className="grid grid-cols-3 gap-2 text-center text-xs">
+              <div className="bg-white p-3 rounded-xl shadow-sm dark:bg-slate-900 border border-slate-50 dark:border-slate-800">
+                <span className="text-[10px] font-bold text-slate-450 block uppercase">Solved</span>
+                <span className="text-base font-black text-slate-800 dark:text-slate-100">
+                  {studentProfile?.resolvedDoubtsCount || 0}
+                </span>
+              </div>
+              <div className="bg-white p-3 rounded-xl shadow-sm dark:bg-slate-900 border border-slate-50 dark:border-slate-800">
+                <span className="text-[10px] font-bold text-slate-450 block uppercase">Helped</span>
+                <span className="text-base font-black text-slate-800 dark:text-slate-100">
+                  {new Set(solvedAnswers.map((ans: any) => ans.doubtId?._id || ans.doubtId).filter(Boolean)).size}
+                </span>
+              </div>
+              <div className="bg-white p-3 rounded-xl shadow-sm dark:bg-slate-900 border border-slate-50 dark:border-slate-800">
+                <span className="text-[10px] font-bold text-slate-455 block uppercase">XP Gained</span>
+                <span className="text-base font-black text-slate-800 dark:text-slate-100">
+                  {solvedAnswers.reduce((acc: number, cur: any) => acc + (cur.pointsAwarded || 0), 0)}
+                </span>
+              </div>
+            </div>
+            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed font-semibold bg-white/70 dark:bg-slate-900/60 p-3 rounded-xl border border-slate-50 dark:border-slate-800 text-center">
+              🎉 You helped reduce faculty workload by{' '}
+              <strong className="text-brand-600 dark:text-brand-400">
+                {(workloadData?.total > 0
+                  ? (((studentProfile?.resolvedDoubtsCount || 0) / workloadData.total) * 100)
+                  : 0
+                ).toFixed(1)}%
+              </strong>
+              !
+            </p>
+          </div>
+
+          {/* Subject Mastery */}
           <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm dark:bg-[#1E293B] dark:border-slate-800 transition-colors duration-300">
             <h3 className="text-lg font-bold text-slate-800 mb-4 pb-3 border-b border-slate-50 dark:text-slate-100 dark:border-slate-800">
               Subject Mastery

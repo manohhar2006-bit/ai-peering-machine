@@ -30,6 +30,7 @@ router.post('/doubts', authenticateToken, requireRole('student'), doubtControlle
 router.get('/doubts', authenticateToken, doubtController.getDoubtsFeed);
 router.get('/doubts/:id', authenticateToken, doubtController.getDoubtDetails);
 router.post('/doubts/:id/escalate', authenticateToken, doubtController.escalateDoubt);
+router.patch('/doubts/:id/status', authenticateToken, doubtController.updateDoubtStatus);
 
 // Answer Routes
 router.post('/answers', authenticateToken, requireRole('student'), answerController.submitAnswer);
@@ -46,6 +47,9 @@ router.get('/leaderboard', authenticateToken, analyticsController.getLeaderboard
 router.get('/analytics/student', authenticateToken, requireRole('student'), analyticsController.getStudentDashboardData);
 router.get('/analytics/teacher', authenticateToken, requireRole('teacher'), analyticsController.getTeacherDashboardData);
 router.get('/analytics/escalations', authenticateToken, requireRole('teacher'), analyticsController.getEscalationQueue);
+router.get('/analytics/workload', authenticateToken, analyticsController.getWorkloadData);
+router.get('/analytics/weekly-trend', authenticateToken, analyticsController.getWeeklyTrendData);
+router.get('/analytics/topic-heatmap', authenticateToken, analyticsController.getTopicHeatmapData);
 
 // AI Learning Assistant Routes
 router.post('/ai/analyze-doubt', authenticateToken, aiController.analyzeDoubt);

@@ -88,7 +88,12 @@ export interface IDoubt extends Document {
   subjectId: mongoose.Types.ObjectId;
   topic: string;
   difficulty: 'easy' | 'medium' | 'hard';
-  status: 'open' | 'in-progress' | 'resolved' | 'escalated';
+  status: 'open' | 'peer_solved' | 'ai_hinted' | 'escalated' | 'teacher_solved';
+  resolvedAt?: Date | null;
+  escalatedAt?: Date | null;
+  timeToResolve?: number | null;
+  resolvedBy?: 'peer' | 'ai' | 'teacher' | null;
+  hintsUsed?: number;
   peerResponderIds: mongoose.Types.ObjectId[];
   createdAt: Date;
   updatedAt: Date;
@@ -102,7 +107,16 @@ const DoubtSchema = new Schema<IDoubt>({
   subjectId: { type: Schema.Types.ObjectId, ref: 'Subject', required: true },
   topic: { type: String, default: 'General' },
   difficulty: { type: String, enum: ['easy', 'medium', 'hard'], default: 'medium' },
-  status: { type: String, enum: ['open', 'in-progress', 'resolved', 'escalated'], default: 'open' },
+  status: {
+    type: String,
+    enum: ['open', 'peer_solved', 'ai_hinted', 'escalated', 'teacher_solved'],
+    default: 'open'
+  },
+  resolvedAt: { type: Date, default: null },
+  escalatedAt: { type: Date, default: null },
+  timeToResolve: { type: Number, default: null },
+  resolvedBy: { type: String, enum: ['peer', 'ai', 'teacher', null], default: null },
+  hintsUsed: { type: Number, default: 0 },
   peerResponderIds: [{ type: Schema.Types.ObjectId, ref: 'User' }],
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
@@ -335,4 +349,33 @@ const EscalationRecordSchema = new Schema<IEscalationRecord>({
 });
 
 export const EscalationRecord = mongoose.model<IEscalationRecord>('EscalationRecord', EscalationRecordSchema);
+
+// Faculty Analytics Schema
+export interface IFacultyAnalytics extends Document {
+  weekNumber: number;
+  year: number;
+  totalDoubts: number;
+  peerSolved: number;
+  aiHinted: number;
+  escalated: number;
+  teacherSolved: number;
+  workloadReductionPercent: number;
+  minutesSaved: number;
+  createdAt: Date;
+}
+
+const FacultyAnalyticsSchema = new Schema<IFacultyAnalytics>({
+  weekNumber: { type: Number, required: true },
+  year: { type: Number, required: true },
+  totalDoubts: { type: Number, default: 0 },
+  peerSolved: { type: Number, default: 0 },
+  aiHinted: { type: Number, default: 0 },
+  escalated: { type: Number, default: 0 },
+  teacherSolved: { type: Number, default: 0 },
+  workloadReductionPercent: { type: Number, default: 0 },
+  minutesSaved: { type: Number, default: 0 },
+  createdAt: { type: Date, default: Date.now }
+});
+
+export const FacultyAnalytics = mongoose.model<IFacultyAnalytics>('FacultyAnalytics', FacultyAnalyticsSchema);
 

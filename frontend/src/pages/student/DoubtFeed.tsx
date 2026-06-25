@@ -152,7 +152,7 @@ export const DoubtFeed: React.FC = () => {
         <div className="grid md:grid-cols-2 gap-6">
           {doubts.map((doubt) => {
             const isEscalated = doubt.status === 'escalated';
-            const isResolved = doubt.status === 'resolved';
+            const isResolved = ['peer_solved', 'ai_hinted', 'teacher_solved'].includes(doubt.status);
 
             return (
               <div

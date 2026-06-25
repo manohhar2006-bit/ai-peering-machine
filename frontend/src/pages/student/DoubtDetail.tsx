@@ -142,7 +142,7 @@ export const DoubtDetail: React.FC = () => {
   const { doubt, aiAnalysis, isEscalated, escalationReason } = doubtData;
   const isAsker = user?.role === 'student' && doubt.askerId._id === user.id;
   const isTeacher = user?.role === 'teacher';
-  const isDoubtOpen = doubt.status !== 'resolved';
+  const isDoubtOpen = !['peer_solved', 'ai_hinted', 'teacher_solved'].includes(doubt.status);
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">

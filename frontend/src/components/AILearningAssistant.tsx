@@ -48,6 +48,23 @@ export const AILearningAssistant: React.FC<AILearningAssistantProps> = ({
   const [localEscalated, setLocalEscalated] = useState(isEscalated);
   const [localEscalationReason, setLocalEscalationReason] = useState(escalationReason);
   const [escalationPriority, setEscalationPriority] = useState<'low' | 'medium' | 'high'>('medium');
+  const [resolveLoading, setResolveLoading] = useState(false);
+
+  const handleResolveWithAI = async () => {
+    setResolveLoading(true);
+    try {
+      await axios.patch(`http://localhost:5000/api/doubts/${doubt._id}/status`, {
+        status: 'ai_hinted'
+      });
+      alert('Doubt successfully resolved using AI hints!');
+      window.location.reload();
+    } catch (err) {
+      console.error('Failed to resolve doubt:', err);
+      alert('Failed to resolve doubt with AI hints');
+    } finally {
+      setResolveLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (answers.length > 0 && !selectedAnswerId) {
@@ -240,7 +257,7 @@ export const AILearningAssistant: React.FC<AILearningAssistantProps> = ({
             )}
 
             <div className="space-y-2">
-              {isAsker && doubt.status !== 'resolved' && hints.length < 4 && (
+              {isAsker && !['peer_solved', 'ai_hinted', 'teacher_solved'].includes(doubt.status) && hints.length < 4 && (
                 <button
                   onClick={handleRequestHint}
                   disabled={hintLoading}
@@ -252,6 +269,23 @@ export const AILearningAssistant: React.FC<AILearningAssistantProps> = ({
                     <>
                       <Lightbulb className="h-4 w-4" />
                       <span>Reveal Hint #{hints.length + 1}</span>
+                    </>
+                  )}
+                </button>
+              )}
+
+              {isAsker && !['peer_solved', 'ai_hinted', 'teacher_solved'].includes(doubt.status) && hints.length > 0 && (
+                <button
+                  onClick={handleResolveWithAI}
+                  disabled={resolveLoading}
+                  className="w-full flex items-center justify-center space-x-2 rounded-xl bg-emerald-600 text-white font-bold py-2.5 text-xs hover:bg-emerald-750 transition-all shadow-sm"
+                >
+                  {resolveLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      <CheckCircle className="h-4 w-4" />
+                      <span>Resolve with AI Hints</span>
                     </>
                   )}
                 </button>
@@ -519,7 +553,7 @@ export const AILearningAssistant: React.FC<AILearningAssistantProps> = ({
                 <div className="space-y-3">
                   <p>Students are actively discussing this query. Auto-escalation checks will trigger if ratings disagree or average scores remain low.</p>
                   
-                  {isAsker && doubt.status !== 'resolved' && (
+                  {isAsker && !['peer_solved', 'ai_hinted', 'teacher_solved'].includes(doubt.status) && (
                     <button
                       onClick={handleEscalateClick}
                       className="w-full rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold py-2 text-xs transition-all shadow-sm"

@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
-import { User, StudentProfile, TeacherProfile, Subject, Doubt, Answer, Badge, Escalation, AIAnalysis } from './models/Schemas';
+import { User, StudentProfile, TeacherProfile, Subject, Doubt, Answer, Badge, Escalation, AIAnalysis, FacultyAnalytics } from './models/Schemas';
 
 dotenv.config();
 
@@ -36,7 +36,8 @@ const seed = async () => {
       Answer.deleteMany({}),
       Badge.deleteMany({}),
       Escalation.deleteMany({}),
-      AIAnalysis.deleteMany({})
+      AIAnalysis.deleteMany({}),
+      FacultyAnalytics.deleteMany({})
     ]);
     console.log('Cleared existing database records.');
 
@@ -125,7 +126,10 @@ const seed = async () => {
       subjectId: mathSub._id,
       topic: 'Calculus',
       difficulty: 'medium',
-      status: 'resolved',
+      status: 'peer_solved',
+      resolvedAt: new Date(Date.now() - 4 * 60 * 60 * 1000),
+      resolvedBy: 'peer',
+      timeToResolve: 45,
       peerResponderIds: [student1._id, student2._id]
     });
     await doubt1.save();
@@ -164,7 +168,10 @@ const seed = async () => {
       subjectId: csSub._id,
       topic: 'Databases',
       difficulty: 'easy',
-      status: 'resolved',
+      status: 'peer_solved',
+      resolvedAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
+      resolvedBy: 'peer',
+      timeToResolve: 30,
       peerResponderIds: [student2._id]
     });
     await doubt2.save();
@@ -226,6 +233,7 @@ const seed = async () => {
       topic: 'Quantum Mechanics',
       difficulty: 'hard',
       status: 'escalated',
+      escalatedAt: new Date(Date.now() - 10 * 60 * 60 * 1000),
       peerResponderIds: []
     });
     await doubt4.save();
@@ -242,9 +250,22 @@ const seed = async () => {
     const escalation = new Escalation({
       doubtId: doubt4._id,
       reason: 'low-confidence',
-      status: 'pending'
+      status: 'pending',
+      priority: 'high'
     });
     await escalation.save();
+
+    // 4. Seed FacultyAnalytics weekly metrics for historical charts
+    const analyticsData = [
+      { weekNumber: 1, year: 2026, totalDoubts: 15, peerSolved: 5, aiHinted: 2, escalated: 8, teacherSolved: 7, workloadReductionPercent: 46.7, minutesSaved: 35 },
+      { weekNumber: 2, year: 2026, totalDoubts: 18, peerSolved: 8, aiHinted: 4, escalated: 6, teacherSolved: 5, workloadReductionPercent: 66.7, minutesSaved: 60 },
+      { weekNumber: 3, year: 2026, totalDoubts: 25, peerSolved: 12, aiHinted: 7, escalated: 6, teacherSolved: 5, workloadReductionPercent: 76.0, minutesSaved: 95 },
+      { weekNumber: 4, year: 2026, totalDoubts: 28, peerSolved: 15, aiHinted: 9, escalated: 4, teacherSolved: 3, workloadReductionPercent: 85.7, minutesSaved: 120 },
+      { weekNumber: 5, year: 2026, totalDoubts: 32, peerSolved: 18, aiHinted: 12, escalated: 2, teacherSolved: 2, workloadReductionPercent: 93.8, minutesSaved: 150 },
+      { weekNumber: 6, year: 2026, totalDoubts: 38, peerSolved: 22, aiHinted: 14, escalated: 2, teacherSolved: 2, workloadReductionPercent: 94.7, minutesSaved: 180 }
+    ];
+    await FacultyAnalytics.insertMany(analyticsData);
+    console.log('Seeded FacultyAnalytics weekly trend data.');
 
     console.log('Seeded doubt threads, AI analyses, answers, and escalations.');
     console.log('Database seeding successfully finished!');

@@ -27,11 +27,7 @@ export const submitAnswer = async (req: AuthRequest, res: Response) => {
     });
     await answer.save();
 
-    // Update doubt status to in-progress
-    if (doubt.status === 'open') {
-      doubt.status = 'in-progress';
-      await doubt.save();
-    }
+    // Preliminary answer saved. Real-time AI grading evaluation follows.
 
     // 2. Invoke AI evaluation
     const evaluation = await AIService.evaluateAnswer(doubt.title, doubt.description, content);
@@ -75,6 +71,13 @@ export const submitAnswer = async (req: AuthRequest, res: Response) => {
         reason,
         doubt.subjectId.toString()
       );
+
+      doubt.status = 'peer_solved';
+      doubt.resolvedAt = new Date();
+      doubt.resolvedBy = 'peer';
+      const createdTime = new Date(doubt.createdAt).getTime();
+      doubt.timeToResolve = Math.round((Date.now() - createdTime) / (1000 * 60));
+      await doubt.save();
 
       answer.pointsAwarded = points;
       await answer.save();
@@ -149,7 +152,11 @@ export const acceptAnswer = async (req: AuthRequest, res: Response) => {
     answer.isAccepted = true;
     await answer.save();
 
-    doubt.status = 'resolved';
+    doubt.status = 'peer_solved';
+    doubt.resolvedAt = new Date();
+    doubt.resolvedBy = 'peer';
+    const createdTime = new Date(doubt.createdAt).getTime();
+    doubt.timeToResolve = Math.round((Date.now() - createdTime) / (1000 * 60));
     await doubt.save();
 
     // Reward the solver for accepted answer
@@ -189,7 +196,11 @@ export const verifyAnswer = async (req: AuthRequest, res: Response) => {
     answer.isAccepted = true; // Implicitly accepted
     await answer.save();
 
-    doubt.status = 'resolved';
+    doubt.status = 'teacher_solved';
+    doubt.resolvedAt = new Date();
+    doubt.resolvedBy = 'teacher';
+    const createdTime = new Date(doubt.createdAt).getTime();
+    doubt.timeToResolve = Math.round((Date.now() - createdTime) / (1000 * 60));
     await doubt.save();
 
     // Close any pending escalations for this doubt

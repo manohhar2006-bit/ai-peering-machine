@@ -1,5 +1,5 @@
 import { Response } from 'express';
-import { Doubt, Subject, AIAnalysis, User, StudentProfile, Escalation } from '../models/Schemas';
+import { Doubt, Subject, AIAnalysis, User, StudentProfile, Escalation, Hint } from '../models/Schemas';
 import { AuthRequest } from '../middleware/auth';
 import { AIService } from '../services/aiService';
 import { GamificationService } from '../services/gamificationService';
@@ -96,13 +96,17 @@ export const getDoubtsFeed = async (req: AuthRequest, res: Response) => {
     }
 
     if (status) {
-      filter.status = status;
+      if (status === 'resolved') {
+        filter.status = { $in: ['peer_solved', 'ai_hinted', 'teacher_solved'] };
+      } else {
+        filter.status = status;
+      }
     }
 
     if (recommendedOnly && req.user?.userId) {
       // Filter where the current student is listed in peerResponderIds
       filter.peerResponderIds = req.user.userId;
-      filter.status = { $in: ['open', 'in-progress'] };
+      filter.status = 'open';
     }
 
     const doubts = await Doubt.find(filter)
@@ -152,6 +156,7 @@ export const escalateDoubt = async (req: AuthRequest, res: Response) => {
     if (!doubt) return res.status(404).json({ message: 'Doubt not found' });
 
     doubt.status = 'escalated';
+    doubt.escalatedAt = new Date();
     await doubt.save();
 
     const escalation = new Escalation({
@@ -165,5 +170,56 @@ export const escalateDoubt = async (req: AuthRequest, res: Response) => {
   } catch (error) {
     console.error('Escalation error:', error);
     res.status(500).json({ message: 'Failed to escalate doubt' });
+  }
+};
+
+export const updateDoubtStatus = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    const validStatuses = ['open', 'peer_solved', 'ai_hinted', 'escalated', 'teacher_solved'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ message: 'Invalid status' });
+    }
+
+    const doubt = await Doubt.findById(id);
+    if (!doubt) {
+      return res.status(404).json({ message: 'Doubt not found' });
+    }
+
+    doubt.status = status as any;
+
+    if (status === 'peer_solved') {
+      doubt.resolvedAt = new Date();
+      doubt.resolvedBy = 'peer';
+      const createdTime = new Date(doubt.createdAt).getTime();
+      doubt.timeToResolve = Math.round((Date.now() - createdTime) / (1000 * 60));
+    } else if (status === 'ai_hinted') {
+      doubt.resolvedAt = new Date();
+      doubt.resolvedBy = 'ai';
+      const hintCount = await Hint.countDocuments({ doubtId: doubt._id });
+      doubt.hintsUsed = hintCount;
+    } else if (status === 'teacher_solved') {
+      doubt.resolvedAt = new Date();
+      doubt.resolvedBy = 'teacher';
+      const createdTime = new Date(doubt.createdAt).getTime();
+      doubt.timeToResolve = Math.round((Date.now() - createdTime) / (1000 * 60));
+      
+      // Resolve any pending escalations
+      await Escalation.findOneAndUpdate(
+        { doubtId: doubt._id, status: 'pending' },
+        { status: 'resolved', resolvedAt: new Date() }
+      );
+    } else if (status === 'escalated') {
+      doubt.escalatedAt = new Date();
+    }
+
+    await doubt.save();
+
+    res.status(200).json({ message: 'Doubt status updated successfully', doubt });
+  } catch (error) {
+    console.error('Update status error:', error);
+    res.status(500).json({ message: 'Failed to update doubt status' });
   }
 };

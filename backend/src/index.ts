@@ -11,12 +11,16 @@ import express from 'express';
 import cors from 'cors';
 import { connectDB } from './config/db';
 import apiRouter from './routes/api';
+import { initCronJobs } from './services/cronService';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Connect to MongoDB
 connectDB();
+
+// Initialize Cron Jobs
+initCronJobs();
 
 // Middleware
 app.use(cors({

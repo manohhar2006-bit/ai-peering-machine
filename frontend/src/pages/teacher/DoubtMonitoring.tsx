@@ -116,7 +116,7 @@ export const DoubtMonitoring: React.FC = () => {
                   </td>
                   <td className="py-4.5 px-6 text-center font-bold">
                     <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-extrabold capitalize ${
-                      doubt.status === 'resolved' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-450' :
+                      ['peer_solved', 'ai_hinted', 'teacher_solved'].includes(doubt.status) ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-450' :
                       doubt.status === 'escalated' ? 'bg-red-50 text-red-600 dark:bg-red-950/20 dark:text-red-400' :
                       'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/20 dark:text-indigo-400'
                     }`}>

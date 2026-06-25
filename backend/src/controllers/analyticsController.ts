@@ -1,5 +1,5 @@
 import { Response } from 'express';
-import { Doubt, Answer, User, StudentProfile, Escalation, Subject } from '../models/Schemas';
+import { Doubt, Answer, User, StudentProfile, Escalation, Subject, FacultyAnalytics, Hint } from '../models/Schemas';
 import { AuthRequest } from '../middleware/auth';
 
 export const getStudentDashboardData = async (req: AuthRequest, res: Response) => {
@@ -201,5 +201,150 @@ export const getEscalationQueue = async (req: AuthRequest, res: Response) => {
   } catch (error) {
     console.error('Escalation queue error:', error);
     res.status(500).json({ message: 'Failed to fetch escalation queue' });
+  }
+};
+
+// Workload Metrics calculation utility
+export const calculateWorkloadMetrics = async () => {
+  const total = await Doubt.countDocuments();
+  const peerSolved = await Doubt.countDocuments({ status: 'peer_solved' });
+  const aiHinted = await Doubt.countDocuments({ status: 'ai_hinted' });
+  const escalated = await Doubt.countDocuments({ status: 'escalated' });
+  const teacherSolved = await Doubt.countDocuments({ status: 'teacher_solved' });
+  const open = await Doubt.countDocuments({ status: 'open' });
+
+  const workloadReduction = total > 0 ? ((peerSolved + aiHinted) / total) * 100 : 0;
+  const minutesSaved = (peerSolved + aiHinted) * 5;
+  const hoursSaved = parseFloat((minutesSaved / 60).toFixed(1));
+  const teacherInterventionRate = total > 0 ? (escalated / total) * 100 : 0;
+
+  // Calculate average resolution time in minutes
+  const resolvedDoubts = await Doubt.find({
+    status: { $in: ['peer_solved', 'ai_hinted', 'teacher_solved'] },
+    timeToResolve: { $ne: null }
+  });
+  let averageResolutionTimeMinutes = 0;
+  if (resolvedDoubts.length > 0) {
+    const totalTime = resolvedDoubts.reduce((acc, d) => acc + (d.timeToResolve || 0), 0);
+    averageResolutionTimeMinutes = Math.round(totalTime / resolvedDoubts.length);
+  } else {
+    averageResolutionTimeMinutes = 20; // Sensible fallback
+  }
+
+  return {
+    total,
+    peerSolved,
+    aiHinted,
+    escalated,
+    teacherSolved,
+    open,
+    workloadReduction: `${workloadReduction.toFixed(1)}%`,
+    workloadReductionPercent: workloadReduction,
+    minutesSaved,
+    hoursSaved,
+    teacherInterventionRate: `${teacherInterventionRate.toFixed(1)}%`,
+    averageResolutionTimeMinutes
+  };
+};
+
+// GET /api/analytics/workload
+export const getWorkloadData = async (req: AuthRequest, res: Response) => {
+  try {
+    const metrics = await calculateWorkloadMetrics();
+    res.status(200).json(metrics);
+  } catch (error) {
+    console.error('Workload metrics fetch error:', error);
+    res.status(500).json({ message: 'Failed to fetch workload metrics' });
+  }
+};
+
+// GET /api/analytics/weekly-trend
+export const getWeeklyTrendData = async (req: AuthRequest, res: Response) => {
+  try {
+    const analytics = await FacultyAnalytics.find()
+      .sort({ year: 1, weekNumber: 1 })
+      .limit(6);
+
+    if (analytics.length === 0) {
+      // Fallback Mock data
+      const mockWeeklyTrend = [
+        { week: 'Week 1', peerSolved: 5, aiHinted: 2, escalated: 8, workloadReduction: 46.7 },
+        { week: 'Week 2', peerSolved: 8, aiHinted: 4, escalated: 6, workloadReduction: 54.5 },
+        { week: 'Week 3', peerSolved: 12, aiHinted: 7, escalated: 4, workloadReduction: 67.9 },
+        { week: 'Week 4', peerSolved: 15, aiHinted: 9, escalated: 3, workloadReduction: 75.0 },
+        { week: 'Week 5', peerSolved: 18, aiHinted: 12, escalated: 2, workloadReduction: 81.1 },
+        { week: 'Week 6', peerSolved: 22, aiHinted: 14, escalated: 1, workloadReduction: 87.8 }
+      ];
+      return res.status(200).json(mockWeeklyTrend);
+    }
+
+    // Map FacultyAnalytics to the expected response structure
+    const trend = analytics.map((a, index) => ({
+      week: `Week ${index + 1}`,
+      peerSolved: a.peerSolved,
+      aiHinted: a.aiHinted,
+      escalated: a.escalated,
+      workloadReduction: a.workloadReductionPercent
+    }));
+
+    res.status(200).json(trend);
+  } catch (error) {
+    console.error('Weekly trend fetch error:', error);
+    res.status(500).json({ message: 'Failed to fetch weekly trend' });
+  }
+};
+
+// GET /api/analytics/topic-heatmap
+export const getTopicHeatmapData = async (req: AuthRequest, res: Response) => {
+  try {
+    const totalCount = await Doubt.countDocuments();
+    if (totalCount === 0) {
+      const mockTopicHeatmap = [
+        { topic: 'Squeeze Theorem', count: 12, subject: 'Mathematics' },
+        { topic: 'LEFT JOIN & NULL values', count: 10, subject: 'Computer Science' },
+        { topic: 'Newtonian Friction force', count: 9, subject: 'Physics' },
+        { topic: 'Organic reaction mechanism', count: 7, subject: 'Chemistry' },
+        { topic: 'Mitosis division stages', count: 6, subject: 'Biology' },
+        { topic: 'Integrals by parts', count: 5, subject: 'Mathematics' },
+        { topic: 'Database indexing', count: 4, subject: 'Computer Science' },
+        { topic: 'Gravity equations', count: 4, subject: 'Physics' },
+        { topic: 'DNA replication', count: 3, subject: 'Biology' },
+        { topic: 'Acid-Base titration', count: 3, subject: 'Chemistry' }
+      ];
+      return res.status(200).json(mockTopicHeatmap);
+    }
+
+    const heatmap = await Doubt.aggregate([
+      {
+        $group: {
+          _id: { topic: '$topic', subjectId: '$subjectId' },
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $lookup: {
+          from: 'subjects',
+          localField: '_id.subjectId',
+          foreignField: '_id',
+          as: 'subjectInfo'
+        }
+      },
+      { $unwind: { path: '$subjectInfo', preserveNullAndEmptyArrays: true } },
+      {
+        $project: {
+          _id: 0,
+          topic: '$_id.topic',
+          count: '$count',
+          subject: { $ifNull: ['$subjectInfo.name', 'General'] }
+        }
+      },
+      { $sort: { count: -1 } },
+      { $limit: 10 }
+    ]);
+
+    res.status(200).json(heatmap);
+  } catch (error) {
+    console.error('Topic heatmap fetch error:', error);
+    res.status(500).json({ message: 'Failed to fetch topic heatmap' });
   }
 };
