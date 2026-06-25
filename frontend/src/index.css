@@ -1,0 +1,105 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap');
+
+@import "tailwindcss";
+@config "../tailwind.config.js";
+
+@layer base {
+  body {
+    @apply bg-[#F8FAFC] text-slate-900 font-sans transition-colors duration-350 antialiased;
+  }
+
+  html.dark body {
+    @apply bg-[#0F172A] text-slate-100;
+  }
+
+  /* Dark mode text readability fallbacks */
+  html.dark .text-slate-950,
+  html.dark .text-slate-900,
+  html.dark .text-slate-850,
+  html.dark .text-slate-805,
+  html.dark .text-slate-800,
+  html.dark .text-slate-750,
+  html.dark .text-slate-705,
+  html.dark .text-slate-700,
+  html.dark .text-slate-655,
+  html.dark .text-slate-650,
+  html.dark .text-slate-600,
+  html.dark .text-black {
+    color: #f1f5f9;
+  }
+
+  html.dark .text-slate-550,
+  html.dark .text-slate-500,
+  html.dark .text-slate-455,
+  html.dark .text-slate-450,
+  html.dark .text-slate-405,
+  html.dark .text-slate-400 {
+    color: #94a3b8;
+  }
+}
+
+@layer utilities {
+  .bg-glass {
+    @apply bg-white/70 backdrop-blur-md border border-white/20;
+  }
+  .dark .bg-glass {
+    @apply bg-slate-900/70 backdrop-blur-md border border-slate-800/40;
+  }
+
+  .text-glow-teal {
+    text-shadow: 0 0 10px rgba(20, 184, 166, 0.4);
+  }
+  
+  .text-glow-indigo {
+    text-shadow: 0 0 10px rgba(99, 102, 241, 0.4);
+  }
+}
+
+/* Animations */
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-8px); }
+}
+
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.85; transform: scale(0.98); }
+}
+
+@keyframes progress-loading {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.animate-float {
+  animation: float 4s ease-in-out infinite;
+}
+
+.animate-pulse-soft {
+  animation: pulse-soft 3s ease-in-out infinite;
+}
+
+.bg-shimmer {
+  background: linear-gradient(-45deg, #6366f1, #14b8a6, #4f46e5, #0d9488);
+  background-size: 400% 400%;
+  animation: progress-loading 8s ease infinite;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-slate-200 rounded-full dark:bg-slate-800;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-slate-300 dark:bg-slate-700;
+}

@@ -1,0 +1,101 @@
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { ThemeProvider } from './context/ThemeContext';
+import { Navbar } from './components/Navbar';
+import { Sidebar } from './components/Sidebar';
+import { Landing } from './pages/public/Landing';
+import { Login } from './pages/public/Login';
+import { Register } from './pages/public/Register';
+import { StudentDashboard } from './pages/student/Dashboard';
+import { AskDoubt } from './pages/student/AskDoubt';
+import { DoubtFeed } from './pages/student/DoubtFeed';
+import { DoubtDetail } from './pages/student/DoubtDetail';
+import { Leaderboard } from './pages/student/Leaderboard';
+import { Rewards } from './pages/student/Rewards';
+import { Profile } from './pages/student/Profile';
+import { TeacherDashboard } from './pages/teacher/Dashboard';
+import { DoubtMonitoring } from './pages/teacher/DoubtMonitoring';
+import { EscalationQueue } from './pages/teacher/EscalationQueue';
+import { RewardRules } from './pages/teacher/RewardRules';
+
+// Auth Guard component for logged-in users
+const RequireAuth: React.FC<{ children: React.ReactNode; allowedRole?: 'student' | 'teacher' }> = ({ children, allowedRole }) => {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-slate-50 dark:bg-slate-950">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-500 border-t-transparent" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (allowedRole && user.role !== allowedRole) {
+    return <Navigate to={user.role === 'teacher' ? '/teacher-dashboard' : '/dashboard'} replace />;
+  }
+
+  return <>{children}</>;
+};
+
+// Layout component grouping Navbar, Sidebar and main section
+const AppLayout: React.FC = () => {
+  return (
+    <div className="min-h-screen flex flex-col">
+      <Navbar />
+      <div className="flex flex-1">
+        <Sidebar />
+        <main className="flex-1 bg-[#F8FAFC] dark:bg-[#0F172A] transition-colors duration-300 min-h-[calc(100vh-4rem)]">
+          <Routes>
+            {/* Student Pages */}
+            <Route path="/dashboard" element={<RequireAuth allowedRole="student"><StudentDashboard /></RequireAuth>} />
+            <Route path="/ask-doubt" element={<RequireAuth allowedRole="student"><AskDoubt /></RequireAuth>} />
+            <Route path="/feed" element={<RequireAuth allowedRole="student"><DoubtFeed /></RequireAuth>} />
+            <Route path="/leaderboard" element={<RequireAuth><Leaderboard /></RequireAuth>} />
+            <Route path="/rewards" element={<RequireAuth allowedRole="student"><Rewards /></RequireAuth>} />
+            <Route path="/profile" element={<RequireAuth allowedRole="student"><Profile /></RequireAuth>} />
+            
+            {/* General Doubt Detail - both Student and Teacher can open */}
+            <Route path="/doubt/:id" element={<RequireAuth><DoubtDetail /></RequireAuth>} />
+
+            {/* Teacher Pages */}
+            <Route path="/teacher-dashboard" element={<RequireAuth allowedRole="teacher"><TeacherDashboard /></RequireAuth>} />
+            <Route path="/teacher/monitoring" element={<RequireAuth allowedRole="teacher"><DoubtMonitoring /></RequireAuth>} />
+            <Route path="/teacher/escalations" element={<RequireAuth allowedRole="teacher"><EscalationQueue /></RequireAuth>} />
+            <Route path="/teacher/analytics" element={<RequireAuth allowedRole="teacher"><TeacherDashboard /></RequireAuth>} />
+            <Route path="/teacher/rules" element={<RequireAuth allowedRole="teacher"><RewardRules /></RequireAuth>} />
+
+            {/* Redirects */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </main>
+      </div>
+    </div>
+  );
+};
+
+export const App: React.FC = () => {
+  return (
+    <ThemeProvider>
+      <Router>
+        <AuthProvider>
+          <Routes>
+            {/* Public Pages */}
+            <Route path="/" element={<><Navbar /><Landing /></>} />
+            <Route path="/login" element={<><Navbar /><Login /></>} />
+            <Route path="/register" element={<><Navbar /><Register /></>} />
+
+            {/* Layout Protected Pages */}
+            <Route path="/*" element={<AppLayout />} />
+          </Routes>
+        </AuthProvider>
+      </Router>
+    </ThemeProvider>
+  );
+};
+
+export default App;

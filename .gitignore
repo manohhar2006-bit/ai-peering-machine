@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Production builds
+dist/
+**/dist/
+
+# Environment files and secrets
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+
+# Logs
+*.log
+**/logs/
+
+# IDEs and OS files
+.vscode/
+.idea/
+.DS_Store
+*.suo
+Thumbs.db
