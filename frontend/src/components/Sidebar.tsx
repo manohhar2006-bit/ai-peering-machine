@@ -20,7 +20,7 @@ export const Sidebar: React.FC = () => {
   if (!user) return null;
 
   const studentLinks = [
-    { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { to: '/student/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { to: '/ask-doubt', label: 'Ask Doubt', icon: HelpCircle },
     { to: '/feed', label: 'Doubt Feed', icon: Compass },
     { to: '/leaderboard', label: 'Leaderboard', icon: Trophy },
@@ -29,7 +29,7 @@ export const Sidebar: React.FC = () => {
   ];
 
   const teacherLinks = [
-    { to: '/teacher-dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { to: '/teacher/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { to: '/teacher/monitoring', label: 'Doubt Monitoring', icon: Activity },
     { to: '/teacher/escalations', label: 'Escalation Queue', icon: AlertTriangle },
     { to: '/teacher/analytics', label: 'Analytics', icon: LineChart },

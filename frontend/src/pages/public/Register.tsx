@@ -24,9 +24,9 @@ export const Register: React.FC = () => {
       await register(name, email, password, role, role === 'teacher' ? department : undefined);
       setTimeout(() => {
         if (role === 'teacher') {
-          navigate('/teacher-dashboard');
+          navigate('/teacher/dashboard');
         } else {
-          navigate('/dashboard');
+          navigate('/student/dashboard');
         }
       }, 500);
     } catch (err: any) {

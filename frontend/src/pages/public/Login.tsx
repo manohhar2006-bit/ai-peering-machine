@@ -26,9 +26,9 @@ export const Login: React.FC = () => {
         if (token) {
           const payload = JSON.parse(atob(token.split('.')[1]));
           if (payload.role === 'teacher') {
-            navigate('/teacher-dashboard');
+            navigate('/teacher/dashboard');
           } else {
-            navigate('/dashboard');
+            navigate('/student/dashboard');
           }
         }
       }, 500);
@@ -101,7 +101,30 @@ export const Login: React.FC = () => {
           </button>
         </form>
 
-        <p className="mt-8 text-center text-sm text-slate-500 dark:text-slate-400">
+        <div className="grid grid-cols-2 gap-4 mt-6">
+          <button
+            type="button"
+            onClick={() => {
+              setEmail('student@demo.com');
+              setPassword('student123');
+            }}
+            className="rounded-xl border border-brand-200 bg-brand-50/50 hover:bg-brand-50 px-3 py-2 text-xs font-bold text-brand-700 transition-all dark:bg-brand-950/20 dark:text-brand-450 dark:border-brand-900/30 text-center"
+          >
+            Login as Student
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setEmail('teacher@demo.com');
+              setPassword('teacher123');
+            }}
+            className="rounded-xl border border-brand-200 bg-brand-50/50 hover:bg-brand-50 px-3 py-2 text-xs font-bold text-brand-700 transition-all dark:bg-brand-950/20 dark:text-brand-450 dark:border-brand-900/30 text-center"
+          >
+            Login as Teacher
+          </button>
+        </div>
+
+        <p className="mt-6 text-center text-sm text-slate-500 dark:text-slate-400">
           Don't have an account?{' '}
           <Link to="/register" className="font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400">
             Register here
@@ -109,12 +132,12 @@ export const Login: React.FC = () => {
         </p>
 
         {/* Demo hints */}
-        <div className="mt-6 rounded-2xl bg-slate-50 p-4 border border-slate-250/50 text-[11px] text-slate-500 dark:bg-[#0F172A] dark:border-slate-800">
+        <div className="mt-6 rounded-2xl bg-slate-50 p-4 border border-slate-205/50 text-[11px] text-slate-500 dark:bg-[#0F172A] dark:border-slate-800">
           <p className="font-bold text-slate-650 mb-1 dark:text-slate-400">Quick Demo Logins:</p>
           <ul className="space-y-0.5">
-            <li>• Student: <span className="font-bold text-slate-705 dark:text-slate-300">alex@school.edu</span> / password123</li>
-            <li>• Student 2: <span className="font-bold text-slate-705 dark:text-slate-300">jane@school.edu</span> / password123</li>
-            <li>• Faculty: <span className="font-bold text-slate-705 dark:text-slate-300">teacher@school.edu</span> / password123</li>
+            <li>• Student: <span className="font-bold text-slate-705 dark:text-slate-300">student@demo.com</span> / student123</li>
+            <li>• Student 2: <span className="font-bold text-slate-705 dark:text-slate-300">manohhar@demo.com</span> / manohhar123</li>
+            <li>• Teacher: <span className="font-bold text-slate-705 dark:text-slate-300">teacher@demo.com</span> / teacher123</li>
           </ul>
         </div>
       </div>

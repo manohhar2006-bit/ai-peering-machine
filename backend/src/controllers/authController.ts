@@ -65,17 +65,17 @@ export const login = async (req: AuthRequest, res: Response) => {
     const { email, password } = req.body;
 
     if (!email || !password) {
-      return res.status(400).json({ message: 'Email and password are required' });
+      return res.status(400).json({ success: false, message: 'Email and password are required' });
     }
 
     const user = await User.findOne({ email });
     if (!user) {
-      return res.status(400).json({ message: 'Invalid email or password' });
+      return res.status(400).json({ success: false, message: 'Invalid email or password' });
     }
 
     const isMatch = await bcrypt.compare(password, user.passwordHash);
     if (!isMatch) {
-      return res.status(400).json({ message: 'Invalid email or password' });
+      return res.status(400).json({ success: false, message: 'Invalid email or password' });
     }
 
     // Update streak on login if student
@@ -90,12 +90,13 @@ export const login = async (req: AuthRequest, res: Response) => {
     );
 
     res.status(200).json({
+      success: true,
       token,
       user: { id: user._id, name: user.name, email: user.email, role: user.role }
     });
   } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json({ message: 'Login failed' });
+    res.status(500).json({ success: false, message: 'Login failed' });
   }
 };
 

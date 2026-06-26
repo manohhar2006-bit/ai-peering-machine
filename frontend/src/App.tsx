@@ -36,7 +36,7 @@ const RequireAuth: React.FC<{ children: React.ReactNode; allowedRole?: 'student'
   }
 
   if (allowedRole && user.role !== allowedRole) {
-    return <Navigate to={user.role === 'teacher' ? '/teacher-dashboard' : '/dashboard'} replace />;
+    return <Navigate to={user.role === 'teacher' ? '/teacher/dashboard' : '/student/dashboard'} replace />;
   }
 
   return <>{children}</>;
@@ -52,7 +52,7 @@ const AppLayout: React.FC = () => {
         <main className="flex-1 bg-[#F8FAFC] dark:bg-[#0F172A] transition-colors duration-300 min-h-[calc(100vh-4rem)]">
           <Routes>
             {/* Student Pages */}
-            <Route path="/dashboard" element={<RequireAuth allowedRole="student"><StudentDashboard /></RequireAuth>} />
+            <Route path="/student/dashboard" element={<RequireAuth allowedRole="student"><StudentDashboard /></RequireAuth>} />
             <Route path="/ask-doubt" element={<RequireAuth allowedRole="student"><AskDoubt /></RequireAuth>} />
             <Route path="/feed" element={<RequireAuth allowedRole="student"><DoubtFeed /></RequireAuth>} />
             <Route path="/leaderboard" element={<RequireAuth><Leaderboard /></RequireAuth>} />
@@ -63,7 +63,7 @@ const AppLayout: React.FC = () => {
             <Route path="/doubt/:id" element={<RequireAuth><DoubtDetail /></RequireAuth>} />
 
             {/* Teacher Pages */}
-            <Route path="/teacher-dashboard" element={<RequireAuth allowedRole="teacher"><TeacherDashboard /></RequireAuth>} />
+            <Route path="/teacher/dashboard" element={<RequireAuth allowedRole="teacher"><TeacherDashboard /></RequireAuth>} />
             <Route path="/teacher/monitoring" element={<RequireAuth allowedRole="teacher"><DoubtMonitoring /></RequireAuth>} />
             <Route path="/teacher/escalations" element={<RequireAuth allowedRole="teacher"><EscalationQueue /></RequireAuth>} />
             <Route path="/teacher/analytics" element={<RequireAuth allowedRole="teacher"><TeacherDashboard /></RequireAuth>} />
