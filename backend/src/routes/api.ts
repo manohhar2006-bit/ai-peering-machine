@@ -4,9 +4,9 @@ import * as doubtController from '../controllers/doubtController';
 import * as answerController from '../controllers/answerController';
 import * as hintController from '../controllers/hintController';
 import * as analyticsController from '../controllers/analyticsController';
-import * as aiController from '../controllers/aiController';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { Subject } from '../models/Schemas';
+import aiRoutes from './aiRoutes';
 
 const router = Router();
 
@@ -52,10 +52,6 @@ router.get('/analytics/weekly-trend', authenticateToken, analyticsController.get
 router.get('/analytics/topic-heatmap', authenticateToken, analyticsController.getTopicHeatmapData);
 
 // AI Learning Assistant Routes
-router.post('/ai/analyze-doubt', authenticateToken, aiController.analyzeDoubt);
-router.post('/ai/generate-hint', authenticateToken, aiController.generateHint);
-router.post('/ai/evaluate-answer', authenticateToken, aiController.evaluateAnswer);
-router.post('/ai/referee', authenticateToken, aiController.referee);
-router.post('/ai/escalate', authenticateToken, aiController.escalate);
+router.use('/ai', aiRoutes);
 
 export default router;

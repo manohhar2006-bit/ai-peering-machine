@@ -11,7 +11,7 @@
     "seed:all": "ts-node src/seed.ts"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.1.1",
+    "@google/generative-ai": "^0.24.1",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.0.3",
