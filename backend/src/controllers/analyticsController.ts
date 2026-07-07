@@ -1,5 +1,5 @@
 import { Response } from 'express';
-import { Doubt, Answer, User, StudentProfile, Escalation, Subject, FacultyAnalytics, Hint } from '../models/Schemas';
+import { Doubt, Answer, User, StudentProfile, Escalation, Subject, FacultyAnalytics, HintHistory } from '../models/Schemas';
 import { AuthRequest } from '../middleware/auth';
 
 export const getStudentDashboardData = async (req: AuthRequest, res: Response) => {

@@ -1,9 +1,10 @@
 import { Response } from 'express';
-import { Doubt, Hint } from '../models/Schemas';
+import { Doubt, HintHistory } from '../models/Schemas';
 import { AuthRequest } from '../middleware/auth';
 import { AIService } from '../services/aiService';
 
 export const requestHint = async (req: AuthRequest, res: Response) => {
+  // Legacy handler: can redirect or keep backward compatibility
   try {
     const { doubtId } = req.body;
     const userId = req.user?.userId;
@@ -17,21 +18,19 @@ export const requestHint = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ message: 'Doubt not found' });
     }
 
-    // Determine how many hints this user has already requested for this doubt
-    const hintCount = await Hint.countDocuments({ doubtId, userId });
+    const hintCount = await HintHistory.countDocuments({ doubtId, userId, ladderIndex: { $gte: 0 } });
 
-    if (hintCount >= 3) {
-      return res.status(400).json({ message: 'Maximum of 3 hints already revealed for this doubt.' });
+    if (hintCount >= 6) {
+      return res.status(400).json({ message: 'Maximum of 6 hints already revealed for this doubt.' });
     }
 
-    // Generate the progressive hint
     const hintContent = await AIService.generateHint(doubt.title, doubt.description, hintCount);
 
-    // Save the revealed hint
-    const hint = new Hint({
+    const hint = new HintHistory({
       doubtId,
       userId,
-      hintLadderIndex: hintCount,
+      ladderIndex: hintCount,
+      queryText: '',
       hintContent
     });
     await hint.save();
@@ -52,8 +51,20 @@ export const getRevealedHints = async (req: AuthRequest, res: Response) => {
     const { doubtId } = req.params;
     const userId = req.user?.userId;
 
-    const hints = await Hint.find({ doubtId, userId }).sort({ hintLadderIndex: 1 });
-    res.status(200).json(hints);
+    const history = await HintHistory.find({ doubtId, userId }).sort({ revealedAt: 1 });
+    
+    const mapped = history.map(h => ({
+      _id: h._id,
+      doubtId: h.doubtId,
+      userId: h.userId,
+      hintLadderIndex: h.ladderIndex,
+      ladderIndex: h.ladderIndex,
+      queryText: h.queryText || '',
+      hintContent: h.hintContent,
+      revealedAt: h.revealedAt
+    }));
+
+    res.status(200).json(mapped);
   } catch (error) {
     console.error('Get revealed hints error:', error);
     res.status(500).json({ message: 'Failed to retrieve revealed hints' });

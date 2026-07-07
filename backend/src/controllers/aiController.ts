@@ -7,7 +7,8 @@ import {
   AIAnalysis,
   HintHistory,
   AnswerEvaluation,
-  Escalation
+  Escalation,
+  RefereeEvaluation
 } from '../models/Schemas';
 import { GamificationService } from '../services/gamificationService';
 import { mapEscalationReason } from '../services/aiService';
@@ -32,7 +33,6 @@ export const analyzeDoubt = async (req: AuthRequest, res: Response) => {
     }
 
     if (!doubtText) {
-      // Use fallback mock structure
       return res.status(200).json({
         topic: "General Concept",
         difficulty: "medium",
@@ -45,7 +45,6 @@ export const analyzeDoubt = async (req: AuthRequest, res: Response) => {
 
     const result = await geminiService.analyzeDoubt(doubtText, subject || 'General');
 
-    // Save to AIAnalysis collection if doubtId exists
     if (doubtId) {
       const aiAnalysis = new AIAnalysis({
         doubtId,
@@ -56,7 +55,6 @@ export const analyzeDoubt = async (req: AuthRequest, res: Response) => {
       });
       await aiAnalysis.save();
 
-      // Update doubt with AI analysis
       await Doubt.findByIdAndUpdate(doubtId, {
         topic: result.topic,
         difficulty: result.difficulty
@@ -80,59 +78,97 @@ export const analyzeDoubt = async (req: AuthRequest, res: Response) => {
 // POST /api/ai/generate-hint
 export const generateHint = async (req: AuthRequest, res: Response) => {
   try {
-    let { doubtId, doubtText, level, ladderIndex } = req.body;
+    let { doubtId, doubtText } = req.body;
     const userId = req.user?.userId;
 
-    if (level === undefined && ladderIndex !== undefined) {
-      level = ladderIndex + 1;
-    }
-    if (ladderIndex === undefined && level !== undefined) {
-      ladderIndex = level - 1;
+    if (!doubtId) {
+      return res.status(400).json({ message: 'Doubt ID is required' });
     }
 
-    if (level === undefined) {
-      level = 1;
-      ladderIndex = 0;
+    const doubt = await Doubt.findById(doubtId);
+    if (!doubt) {
+      return res.status(404).json({ message: 'Doubt not found' });
     }
 
-    let doubt = null;
-    if (doubtId) {
-      doubt = await Doubt.findById(doubtId);
-      if (doubt && !doubtText) {
-        doubtText = `${doubt.title}\n${doubt.description}`;
-      }
+    if (!doubtText) {
+      doubtText = `${doubt.title}\n${doubt.description}`;
     }
 
-    const result = await geminiService.generateHints(doubtText || 'Study query', level);
+    const progressiveCount = await HintHistory.countDocuments({ doubtId, userId, ladderIndex: { $gte: 0 } });
 
-    if (doubtId && userId) {
-      // Save hint to HintHistory collection
+    if (progressiveCount >= 6) {
+      return res.status(400).json({ message: 'All 6 hints have already been revealed. Try asking a follow-up question or submitting your solution!' });
+    }
+
+    const nextLevel = progressiveCount + 1;
+    const ladderIndex = progressiveCount;
+
+    const result = await geminiService.generateHints(doubtText, nextLevel);
+
+    if (userId) {
       const history = new HintHistory({
         doubtId,
         userId,
-        ladderIndex: ladderIndex || 0,
+        ladderIndex,
+        queryText: '',
         hintContent: result.hint
       });
       await history.save();
 
-      // Increment hintsUsed count on doubt
       await Doubt.findByIdAndUpdate(doubtId, { $inc: { hintsUsed: 1 } });
     }
 
     res.status(200).json({
       hintContent: result.hint,
-      ladderIndex: ladderIndex || 0,
-      totalHintsUsed: (ladderIndex || 0) + 1,
+      ladderIndex,
+      totalHintsUsed: progressiveCount + 1,
       encouragement: result.encouragement
     });
   } catch (error) {
     console.error('Error in generateHint endpoint:', error);
-    res.status(200).json({
-      hintContent: "AI hint generation is temporarily unavailable. Try analyzing key terms or reviewing the textbook.",
-      ladderIndex: 0,
-      totalHintsUsed: 1,
-      encouragement: "Keep trying! Every step counts."
+    res.status(500).json({ message: 'Failed to generate progressive hint' });
+  }
+};
+
+// POST /api/ai/chat-coach
+export const chatCoach = async (req: AuthRequest, res: Response) => {
+  try {
+    const { doubtId, query } = req.body;
+    const userId = req.user?.userId;
+
+    if (!doubtId || !query) {
+      return res.status(400).json({ message: 'Doubt ID and student query are required' });
+    }
+
+    const doubt = await Doubt.findById(doubtId);
+    if (!doubt) {
+      return res.status(404).json({ message: 'Doubt not found' });
+    }
+
+    const doubtText = `${doubt.title}\n${doubt.description}`;
+
+    const history = await HintHistory.find({ doubtId, userId }).sort({ revealedAt: 1 });
+
+    const reply = await geminiService.generateFollowUpReply(doubtText, history, query);
+
+    const historyEntry = new HintHistory({
+      doubtId,
+      userId,
+      ladderIndex: -1,
+      queryText: query,
+      hintContent: reply
     });
+    await historyEntry.save();
+
+    res.status(200).json({
+      queryText: query,
+      hintContent: reply,
+      revealedAt: historyEntry.revealedAt,
+      ladderIndex: -1
+    });
+  } catch (error) {
+    console.error('Error in chatCoach endpoint:', error);
+    res.status(500).json({ message: 'Failed to process follow-up query' });
   }
 };
 
@@ -156,20 +192,43 @@ export const evaluateAnswer = async (req: AuthRequest, res: Response) => {
     const result = await geminiService.evaluateAnswer(doubtText || 'Study query', answerText);
 
     if (doubtId) {
-      // Save to AnswerEvaluation collection
+      // Save full evaluation record
       const evalRecord = new AnswerEvaluation({
         answerId: answerId || null,
         doubtId,
-        correctness: result.correctness,
-        clarity: result.clarity,
-        completeness: result.completeness,
-        usefulness: result.score,
-        score: result.score,
-        feedback: result.feedback
+        correctness: result.correctness ?? 50,
+        clarity: result.clarity ?? 50,
+        completeness: result.completeness ?? 50,
+        logicalThinking: result.logicalThinking ?? 50,
+        presentation: result.presentation ?? 50,
+        overallScore: result.overallScore ?? result.score ?? 50,
+        usefulness: result.overallScore ?? result.score ?? 50,
+        score: result.score ?? result.overallScore ?? 50,
+        verdict: result.verdict ?? 'partially_correct',
+        feedback: result.feedback ?? '',
+        strengths: result.strengths ?? [],
+        weaknesses: result.weaknesses ?? [],
+        suggestions: result.suggestions ?? [],
+        missingConcepts: result.missingConcepts ?? [],
+        xpAwarded: result.xpAwarded ?? 0
       });
       await evalRecord.save();
 
-      // If correct: update doubt status to peer_solved
+      // Patch the Answer doc's inline aiEvaluation field for referee/evaluator display
+      if (answerId) {
+        await Answer.findByIdAndUpdate(answerId, {
+          aiEvaluation: {
+            correctness: result.correctness ?? 50,
+            clarity: result.clarity ?? 50,
+            completeness: result.completeness ?? 50,
+            usefulness: result.overallScore ?? result.score ?? 50,
+            score: result.score ?? result.overallScore ?? 50,
+            feedback: result.feedback ?? ''
+          }
+        });
+      }
+
+      // Mark doubt as peer_solved if correct
       if (result.verdict === 'correct' && doubt) {
         doubt.status = 'peer_solved';
         doubt.resolvedAt = new Date();
@@ -179,9 +238,9 @@ export const evaluateAnswer = async (req: AuthRequest, res: Response) => {
         await doubt.save();
       }
 
-      // Award XP to student
+      // Award XP
       const solverId = req.user?.userId;
-      if (solverId && doubt && result.xpAwarded > 0) {
+      if (solverId && doubt && (result.xpAwarded ?? 0) > 0) {
         await GamificationService.awardPoints(
           solverId,
           result.xpAwarded,
@@ -197,11 +256,17 @@ export const evaluateAnswer = async (req: AuthRequest, res: Response) => {
     console.error('Error in evaluateAnswer endpoint:', error);
     res.status(200).json({
       verdict: "partially_correct",
+      overallScore: 50,
       score: 50,
       correctness: 50,
       clarity: 50,
       completeness: 50,
+      logicalThinking: 50,
+      presentation: 50,
       feedback: "Evaluation unavailable. Good effort, review key concepts.",
+      strengths: [],
+      weaknesses: [],
+      suggestions: [],
       missingConcepts: [],
       xpAwarded: 10
     });
@@ -209,18 +274,23 @@ export const evaluateAnswer = async (req: AuthRequest, res: Response) => {
 };
 
 // POST /api/ai/referee
+// Enhanced: per-answer rubric, confidence score, stores evaluation history
 export const referee = async (req: AuthRequest, res: Response) => {
   try {
+    const triggeredBy = req.user?.userId;
     let { doubtId, doubtText, answers } = req.body;
 
+    let doubt = null;
+    let dbAnswers: any[] = [];
+
     if (doubtId) {
-      const doubt = await Doubt.findById(doubtId);
+      doubt = await Doubt.findById(doubtId);
       if (doubt) {
         if (!doubtText) {
           doubtText = `${doubt.title}\n${doubt.description}`;
         }
         if (!answers) {
-          const dbAnswers = await Answer.find({ doubtId });
+          dbAnswers = await Answer.find({ doubtId }).populate('solverId', 'name email');
           answers = dbAnswers.map(a => a.content);
         }
       }
@@ -232,12 +302,61 @@ export const referee = async (req: AuthRequest, res: Response) => {
         ranking: [0],
         comparison: "No answers available for referee comparison.",
         missingInAll: [],
-        winner: "Review complete."
+        winner: "Review complete.",
+        confidenceScore: 0,
+        perAnswerScores: []
       });
     }
 
     const result = await geminiService.refereeAnswers(doubtText || 'Study query', answers);
-    res.status(200).json(result);
+
+    // Enrich perAnswerScores with solver info from dbAnswers
+    const enrichedScores = (result.perAnswerScores || []).map((s: any, i: number) => {
+      const dbAns = dbAnswers[i];
+      return {
+        ...s,
+        answerId: dbAns?._id || undefined,
+        solverName: dbAns?.solverId?.name || `Answer ${i + 1}`
+      };
+    });
+
+    // Determine bestAnswerId from dbAnswers
+    const bestAnswerId = dbAnswers[result.bestAnswerIndex]?._id || undefined;
+
+    // Save referee evaluation to history
+    if (doubtId && triggeredBy) {
+      try {
+        const evalDoc = new RefereeEvaluation({
+          doubtId,
+          triggeredBy,
+          perAnswerScores: enrichedScores,
+          bestAnswerIndex: result.bestAnswerIndex,
+          bestAnswerId,
+          ranking: result.ranking || [],
+          winner: result.winner || '',
+          comparison: result.comparison || '',
+          missingInAll: result.missingInAll || [],
+          confidenceScore: result.confidenceScore || 0,
+          teacherApproved: false
+        });
+        await evalDoc.save();
+      } catch (saveErr) {
+        console.warn('Could not save RefereeEvaluation:', saveErr);
+      }
+    }
+
+    res.status(200).json({
+      ...result,
+      perAnswerScores: enrichedScores,
+      bestAnswerId,
+      // Attach bestAnswer info for backward compatibility with FocusRoom UI
+      bestAnswer: dbAnswers[result.bestAnswerIndex]
+        ? {
+            solverName: dbAnswers[result.bestAnswerIndex]?.solverId?.name || 'Student',
+            content: dbAnswers[result.bestAnswerIndex]?.content || ''
+          }
+        : null
+    });
   } catch (error) {
     console.error('Error in referee endpoint:', error);
     res.status(200).json({
@@ -245,8 +364,75 @@ export const referee = async (req: AuthRequest, res: Response) => {
       ranking: [0],
       comparison: "Referee unavailable. Showing default ordering.",
       missingInAll: [],
-      winner: "Completed submission review."
+      winner: "Completed submission review.",
+      confidenceScore: 0,
+      perAnswerScores: []
     });
+  }
+};
+
+// GET /api/ai/referee-history/:doubtId
+// Returns all past referee evaluations for a doubt (most recent first)
+export const getRefereeHistory = async (req: AuthRequest, res: Response) => {
+  try {
+    const { doubtId } = req.params;
+
+    const history = await RefereeEvaluation.find({ doubtId })
+      .populate('triggeredBy', 'name role')
+      .populate('overriddenBy', 'name role')
+      .sort({ createdAt: -1 })
+      .limit(20);
+
+    res.status(200).json({ history });
+  } catch (error) {
+    console.error('Error in getRefereeHistory endpoint:', error);
+    res.status(500).json({ message: 'Failed to fetch referee history' });
+  }
+};
+
+// POST /api/ai/referee-override
+// Teacher approves or overrides the AI best-answer selection
+export const refereeOverride = async (req: AuthRequest, res: Response) => {
+  try {
+    const teacherId = req.user?.userId;
+    const { evaluationId, action, overriddenBestIndex, teacherNote } = req.body;
+
+    if (!evaluationId || !action) {
+      return res.status(400).json({ message: 'evaluationId and action are required' });
+    }
+
+    const evalDoc = await RefereeEvaluation.findById(evaluationId);
+    if (!evalDoc) {
+      return res.status(404).json({ message: 'Referee evaluation not found' });
+    }
+
+    if (action === 'approve') {
+      evalDoc.teacherApproved = true;
+      evalDoc.overriddenBy = teacherId as any;
+      evalDoc.overriddenAt = new Date();
+      if (teacherNote) evalDoc.teacherNote = teacherNote;
+    } else if (action === 'override') {
+      if (overriddenBestIndex === undefined || overriddenBestIndex === null) {
+        return res.status(400).json({ message: 'overriddenBestIndex is required for override action' });
+      }
+      evalDoc.teacherApproved = true;
+      evalDoc.teacherOverriddenBestIndex = overriddenBestIndex;
+      const overriddenScore = evalDoc.perAnswerScores[overriddenBestIndex];
+      if (overriddenScore?.answerId) {
+        evalDoc.teacherOverriddenBestAnswerId = overriddenScore.answerId as any;
+      }
+      evalDoc.overriddenBy = teacherId as any;
+      evalDoc.overriddenAt = new Date();
+      if (teacherNote) evalDoc.teacherNote = teacherNote;
+    } else {
+      return res.status(400).json({ message: 'action must be "approve" or "override"' });
+    }
+
+    await evalDoc.save();
+    res.status(200).json({ message: 'Referee decision saved', evaluation: evalDoc });
+  } catch (error) {
+    console.error('Error in refereeOverride endpoint:', error);
+    res.status(500).json({ message: 'Failed to save teacher decision' });
   }
 };
 
@@ -319,10 +505,28 @@ export const testGemini = async (req: AuthRequest, res: Response) => {
     });
   } catch (error: any) {
     console.error("Gemini connection test failed:", error);
-    res.status(500).json({
+    res.status(250).json({
       success: false,
       message: "Gemini API connection failed",
       error: error.message || error
+    });
+  }
+};
+
+// POST /api/ai/chat
+export const chatAssistant = async (req: AuthRequest, res: Response) => {
+  try {
+    const { query, topic, subject } = req.body;
+    if (!query) {
+      return res.status(400).json({ message: 'Query is required.' });
+    }
+
+    const reply = await geminiService.getGeneralExplanation(query, subject, topic);
+    res.status(200).json({ reply });
+  } catch (error: any) {
+    console.error('AI assistant chat error:', error);
+    res.status(200).json({
+      reply: "I am having trouble connecting to my knowledge base right now. Please try asking again in a few moments, or check with your class peers!"
     });
   }
 };

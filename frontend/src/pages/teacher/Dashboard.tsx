@@ -30,7 +30,11 @@ import {
   Brain,
   Award,
   ChevronRight,
-  BookOpen
+  BookOpen,
+  Plus,
+  UserCheck,
+  Activity,
+  Zap
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useTheme } from '../../context/ThemeContext';
@@ -49,21 +53,38 @@ export const TeacherDashboard: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
 
+  // New allocation states
+  const [studentCount, setStudentCount] = useState(0);
+  const [slowLearnersCount, setSlowLearnersCount] = useState(0);
+  const [activeRoomsCount, setActiveRoomsCount] = useState(0);
+  const [strugglingStudents, setStrugglingStudents] = useState<any[]>([]);
+
   const fetchDashboardData = async () => {
     try {
       setError(null);
       
-      const [metricsRes, trendRes, heatmapRes, escalationsRes] = await Promise.all([
+      const [metricsRes, trendRes, heatmapRes, escalationsRes, studentsRes, roomsRes] = await Promise.all([
         axios.get(`${API_URL}/analytics/workload`),
         axios.get(`${API_URL}/analytics/weekly-trend`),
         axios.get(`${API_URL}/analytics/topic-heatmap`),
-        axios.get(`${API_URL}/analytics/escalations`)
+        axios.get(`${API_URL}/analytics/escalations`),
+        axios.get(`${API_URL}/allocation/my-students`),
+        axios.get(`${API_URL}/focus-room/my-rooms`)
       ]);
 
       setMetricsData(metricsRes.data);
       setWeeklyTrendData(trendRes.data);
       setHeatmapData(heatmapRes.data);
       setEscalations(escalationsRes.data);
+
+      const students = studentsRes.data.students || [];
+      setStudentCount(students.length);
+      const slowList = students.filter((s: any) => s.isSlowLearner);
+      setSlowLearnersCount(slowList.length);
+      setStrugglingStudents(slowList.slice(0, 3));
+
+      const rooms = roomsRes.data || [];
+      setActiveRoomsCount(rooms.filter((r: any) => r.isActive).length);
     } catch (err) {
       console.error('Failed to load teacher dashboard data:', err);
       setError('Failed to retrieve analytics data from server. Utilizing simulated fallbacks.');
@@ -98,6 +119,15 @@ export const TeacherDashboard: React.FC = () => {
         { topic: 'Organic reaction mechanism', count: 7, subject: 'Chemistry' },
         { topic: 'Mitosis division stages', count: 6, subject: 'Biology' }
       ]);
+
+      setStudentCount(8);
+      setSlowLearnersCount(3);
+      setStrugglingStudents([
+        { id: '1', name: 'Ravi Kumar', rollNumber: 'CS001', section: 'CSE-A', performanceLevel: 'slow' },
+        { id: '2', name: 'Sneha Reddy', rollNumber: 'CS004', section: 'CSE-A', performanceLevel: 'slow' },
+        { id: '3', name: 'Ananya Das', rollNumber: 'CS006', section: 'CSE-B', performanceLevel: 'slow' }
+      ]);
+      setActiveRoomsCount(1);
     } finally {
       setLoading(false);
     }
@@ -219,125 +249,373 @@ export const TeacherDashboard: React.FC = () => {
         </div>
       )}
 
-      {/* KPI Stats Grid - 6 Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-6 gap-6">
-        {/* Highlighted Workload Reduction Card - Col Span 2 */}
-        <div className="md:col-span-2 rounded-3xl border-2 border-emerald-500/20 bg-emerald-50/10 p-6 shadow-premium dark:bg-slate-900/50 dark:border-slate-800 flex flex-col justify-between items-stretch">
+      {/* Redesigned Animated 8 KPI Stats Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        {/* Card 1: Total Students */}
+        <Link
+          to="/teacher/my-students"
+          className="group relative p-6 bg-white dark:bg-[#1E293B] border border-slate-100 dark:border-slate-805 rounded-3xl shadow-sm hover:shadow-lg hover:border-blue-450 dark:hover:border-blue-700 transition-all duration-300 transform hover:-translate-y-1.5 flex flex-col justify-between"
+        >
           <div className="flex justify-between items-start">
-            <div>
-              <span className="text-xs font-black text-emerald-600 uppercase tracking-wider dark:text-emerald-450 block">Workload Reduction</span>
-              <p className="text-[10px] text-slate-400 font-bold mt-0.5">Key Research Metric</p>
-            </div>
-            <div className="p-2.5 rounded-xl bg-emerald-500 text-white shadow-sm">
-              <TrendingDown className="h-5 w-5" />
-            </div>
-          </div>
-          <div className="flex items-center justify-between gap-4 mt-6">
-            <div>
-              <div className="text-4xl font-black text-slate-800 dark:text-slate-105">{reductionPercent.toFixed(1)}%</div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
-                Faculty doubts resolved completely without teacher intervention.
-              </p>
-            </div>
-            {/* Circular Progress Indicator */}
-            <div className="relative h-24 w-24 flex-shrink-0 flex items-center justify-center">
-              <svg className="h-full w-full transform -rotate-90">
-                <circle
-                  cx="48"
-                  cy="48"
-                  r={radius}
-                  className="stroke-slate-205 dark:stroke-slate-800"
-                  strokeWidth="8"
-                  fill="transparent"
-                />
-                <circle
-                  cx="48"
-                  cy="48"
-                  r={radius}
-                  className="stroke-emerald-500"
-                  strokeWidth="8"
-                  fill="transparent"
-                  strokeDasharray={circumference}
-                  strokeDashoffset={strokeDashoffset}
-                  strokeLinecap="round"
-                />
-              </svg>
-              <div className="absolute text-sm font-black text-slate-800 dark:text-slate-105">
-                {Math.round(reductionPercent)}%
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Total doubts card */}
-        <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm dark:bg-slate-900 dark:border-slate-850 flex flex-col justify-between">
-          <div className="flex justify-between items-start">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Doubts</span>
-            <div className="p-2 rounded-lg bg-blue-50 text-blue-500 dark:bg-blue-950/20">
-              <HelpCircle className="h-5 w-5" />
+            <span className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider">Total Students</span>
+            <div className="p-2.5 bg-blue-50 text-blue-505 dark:bg-blue-950/20 dark:text-blue-400 rounded-2xl group-hover:scale-110 transition-transform duration-300">
+              <Users className="h-5.5 w-5.5" />
             </div>
           </div>
           <div className="mt-4">
-            <div className="text-2xl font-black text-slate-800 dark:text-slate-105">{metricsData.total}</div>
+            <h3 className="text-3xl font-black text-slate-800 dark:text-slate-105">{studentCount}</h3>
+            <p className="text-[10px] text-blue-505 font-bold group-hover:underline mt-1">View mentored list</p>
+          </div>
+        </Link>
+
+        {/* Card 2: Active Focus Rooms */}
+        <Link
+          to="/teacher/focus-rooms"
+          className="group relative p-6 bg-white dark:bg-[#1E293B] border border-slate-100 dark:border-slate-805 rounded-3xl shadow-sm hover:shadow-lg hover:border-indigo-450 dark:hover:border-indigo-700 transition-all duration-300 transform hover:-translate-y-1.5 flex flex-col justify-between"
+        >
+          <div className="flex justify-between items-start">
+            <span className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider">Active Rooms</span>
+            <div className="p-2.5 bg-indigo-50 text-indigo-505 dark:bg-indigo-950/20 dark:text-indigo-400 rounded-2xl group-hover:scale-110 transition-transform duration-300">
+              <BookOpen className="h-5.5 w-5.5" />
+            </div>
+          </div>
+          <div className="mt-4">
+            <h3 className="text-3xl font-black text-slate-800 dark:text-slate-105">{activeRoomsCount}</h3>
+            <p className="text-[10px] text-indigo-505 font-bold group-hover:underline mt-1">Remedial focus groups</p>
+          </div>
+        </Link>
+
+        {/* Card 3: Total Doubts */}
+        <div className="group p-6 bg-white dark:bg-[#1E293B] border border-slate-100 dark:border-slate-805 rounded-3xl shadow-sm hover:shadow-lg hover:border-violet-450 dark:hover:border-violet-700 transition-all duration-300 transform hover:-translate-y-1.5 flex flex-col justify-between">
+          <div className="flex justify-between items-start">
+            <span className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider">Total Doubts</span>
+            <div className="p-2.5 bg-violet-50 text-violet-500 dark:bg-violet-950/20 dark:text-violet-400 rounded-2xl group-hover:scale-110 transition-transform duration-300">
+              <HelpCircle className="h-5.5 w-5.5" />
+            </div>
+          </div>
+          <div className="mt-4">
+            <h3 className="text-3xl font-black text-slate-800 dark:text-slate-105">{metricsData.total}</h3>
             <p className="text-[10px] text-slate-400 font-bold mt-1">Total doubts posted</p>
           </div>
         </div>
 
-        {/* Solved by peers card */}
-        <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm dark:bg-slate-900 dark:border-slate-850 flex flex-col justify-between">
+        {/* Card 4: Doubts Solved by Students */}
+        <div className="group p-6 bg-white dark:bg-[#1E293B] border border-slate-100 dark:border-slate-805 rounded-3xl shadow-sm hover:shadow-lg hover:border-emerald-450 dark:hover:border-emerald-700 transition-all duration-300 transform hover:-translate-y-1.5 flex flex-col justify-between">
           <div className="flex justify-between items-start">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Peer Solved</span>
-            <div className="p-2 rounded-lg bg-emerald-50 text-emerald-500 dark:bg-emerald-950/20">
-              <Users className="h-5 w-5" />
+            <span className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider">Peer Solved</span>
+            <div className="p-2.5 bg-emerald-50 text-emerald-500 dark:bg-emerald-950/20 dark:text-emerald-450 rounded-2xl group-hover:scale-110 transition-transform duration-300">
+              <CheckCircle className="h-5.5 w-5.5" />
             </div>
           </div>
           <div className="mt-4">
-            <div className="text-2xl font-black text-slate-800 dark:text-slate-105">{metricsData.peerSolved}</div>
-            <p className="text-[10px] text-emerald-600 font-extrabold mt-1 dark:text-emerald-450">No teacher needed</p>
+            <h3 className="text-3xl font-black text-emerald-600 dark:text-emerald-450">{metricsData.peerSolved}</h3>
+            <p className="text-[10px] text-emerald-505 dark:text-emerald-400 font-extrabold mt-1">Solved by peer students</p>
           </div>
         </div>
 
-        {/* Solved by AI Hints card */}
-        <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm dark:bg-slate-900 dark:border-slate-850 flex flex-col justify-between">
+        {/* Card 5: AI Assisted Doubts */}
+        <div className="group p-6 bg-white dark:bg-[#1E293B] border border-slate-100 dark:border-slate-805 rounded-3xl shadow-sm hover:shadow-lg hover:border-purple-450 dark:hover:border-purple-700 transition-all duration-300 transform hover:-translate-y-1.5 flex flex-col justify-between">
           <div className="flex justify-between items-start">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">AI Hint Solved</span>
-            <div className="p-2 rounded-lg bg-purple-50 text-purple-500 dark:bg-purple-950/20">
-              <Sparkles className="h-5 w-5" />
+            <span className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider">AI Assisted</span>
+            <div className="p-2.5 bg-purple-50 text-purple-505 dark:bg-purple-950/20 dark:text-purple-400 rounded-2xl group-hover:scale-110 transition-transform duration-300">
+              <Sparkles className="h-5.5 w-5.5" />
             </div>
           </div>
           <div className="mt-4">
-            <div className="text-2xl font-black text-slate-800 dark:text-slate-105">{metricsData.aiHinted}</div>
-            <p className="text-[10px] text-purple-605 font-extrabold mt-1 dark:text-purple-400">AI guided resolution</p>
+            <h3 className="text-3xl font-black text-slate-800 dark:text-slate-105">{metricsData.aiHinted}</h3>
+            <p className="text-[10px] text-purple-605 dark:text-purple-400 font-extrabold mt-1">AI hint guided doubts</p>
           </div>
         </div>
 
-        {/* Escalated to Teacher card */}
-        <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm dark:bg-slate-900 dark:border-slate-850 flex flex-col justify-between">
+        {/* Card 6: Teacher Interventions */}
+        <div className="group p-6 bg-white dark:bg-[#1E293B] border border-slate-100 dark:border-slate-805 rounded-3xl shadow-sm hover:shadow-lg hover:border-orange-450 dark:hover:border-orange-700 transition-all duration-300 transform hover:-translate-y-1.5 flex flex-col justify-between">
           <div className="flex justify-between items-start">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Escalated</span>
-            <div className="p-2 rounded-lg bg-amber-50 text-amber-500 dark:bg-amber-950/20">
+            <span className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider">Interventions</span>
+            <div className="p-2.5 bg-orange-50 text-orange-555 dark:bg-orange-950/20 dark:text-orange-400 rounded-2xl group-hover:scale-110 transition-transform duration-300">
+              <UserCheck className="h-5.5 w-5.5" />
+            </div>
+          </div>
+          <div className="mt-4">
+            <h3 className="text-3xl font-black text-slate-800 dark:text-slate-105">{metricsData.teacherSolved}</h3>
+            <p className="text-[10px] text-orange-500 dark:text-orange-400 font-extrabold mt-1">Teacher resolved doubts</p>
+          </div>
+        </div>
+
+        {/* Card 7: Estimated Faculty Time Saved */}
+        <div className="group p-6 bg-white dark:bg-[#1E293B] border border-slate-100 dark:border-slate-805 rounded-3xl shadow-sm hover:shadow-lg hover:border-teal-450 dark:hover:border-teal-700 transition-all duration-300 transform hover:-translate-y-1.5 flex flex-col justify-between">
+          <div className="flex justify-between items-start">
+            <span className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider">Faculty Time Saved</span>
+            <div className="p-2.5 bg-teal-50 text-teal-505 dark:bg-teal-950/20 dark:text-teal-400 rounded-2xl group-hover:scale-110 transition-transform duration-300">
+              <Clock className="h-5.5 w-5.5" />
+            </div>
+          </div>
+          <div className="mt-4">
+            <h3 className="text-3xl font-black text-slate-800 dark:text-slate-105">{metricsData.hoursSaved} hrs</h3>
+            <p className="text-[10px] text-teal-605 dark:text-teal-400 font-extrabold mt-1">Estimated workload saved</p>
+          </div>
+        </div>
+
+        {/* Card 8: Faculty Workload Reduction % */}
+        <div className="group relative p-6 bg-emerald-500/5 dark:bg-emerald-500/10 border border-emerald-500/30 hover:border-emerald-450 dark:hover:border-emerald-500 rounded-3xl shadow-premium hover:shadow-premium-lg transition-all duration-300 transform hover:-translate-y-1.5 flex justify-between items-center">
+          <div className="space-y-1">
+            <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-455 uppercase tracking-wider block">Workload Reduction</span>
+            <h3 className="text-2xl font-black text-slate-800 dark:text-slate-105">{reductionPercent.toFixed(1)}%</h3>
+            <p className="text-[9px] text-slate-455 dark:text-slate-400 mt-1 font-bold">Doubts solved by system</p>
+          </div>
+          {/* Small Radial Progress */}
+          <div className="relative h-16 w-16 flex-shrink-0 flex items-center justify-center">
+            <svg className="h-full w-full transform -rotate-90">
+              <circle
+                cx="32"
+                cy="32"
+                r="25"
+                className="stroke-slate-200 dark:stroke-slate-800"
+                strokeWidth="5"
+                fill="transparent"
+              />
+              <circle
+                cx="32"
+                cy="32"
+                r="25"
+                className="stroke-emerald-500"
+                strokeWidth="5"
+                fill="transparent"
+                strokeDasharray={2 * Math.PI * 25}
+                strokeDashoffset={2 * Math.PI * 25 - (reductionPercent / 100) * 2 * Math.PI * 25}
+                strokeLinecap="round"
+              />
+            </svg>
+            <div className="absolute text-[10px] font-black text-slate-800 dark:text-slate-105">
+              {Math.round(reductionPercent)}%
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Quick Actions Portal */}
+      <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-100 dark:border-slate-805 shadow-sm space-y-3.5">
+        <h3 className="text-xs font-black text-slate-800 dark:text-slate-100 uppercase tracking-wider">Quick Actions Portal</h3>
+        <div className="flex flex-wrap gap-3">
+          <Link
+            to="/teacher/my-students"
+            className="flex-1 min-w-[150px] inline-flex items-center justify-center space-x-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-655 font-bold text-xs py-2.5 transition-all text-center dark:bg-slate-850 dark:text-slate-350 dark:hover:bg-slate-800"
+          >
+            <Users className="h-4.5 w-4.5 text-brand-605" />
+            <span>View My Students</span>
+          </Link>
+          
+          <Link
+            to="/focus-rooms/create"
+            className="flex-1 min-w-[150px] inline-flex items-center justify-center space-x-1.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs py-2.5 transition-all text-center shadow-sm"
+          >
+            <Plus className="h-4.5 w-4.5" />
+            <span>Create Focus Room</span>
+          </Link>
+
+          <Link
+            to="/teacher/progress"
+            className="flex-1 min-w-[150px] inline-flex items-center justify-center space-x-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-655 font-bold text-xs py-2.5 transition-all text-center dark:bg-slate-850 dark:text-slate-350 dark:hover:bg-slate-800"
+          >
+            <TrendingUp className="h-4.5 w-4.5 text-emerald-555" />
+            <span>View Progress Report</span>
+          </Link>
+        </div>
+      </div>
+
+      {/* Struggling Students Alert Panel */}
+      {strugglingStudents.length > 0 && (
+        <div className="bg-rose-50/10 dark:bg-rose-955/5 border border-rose-150/40 rounded-3xl p-6 space-y-4">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div className="flex items-center space-x-2 text-rose-600 dark:text-rose-455">
               <AlertTriangle className="h-5 w-5" />
+              <h3 className="text-sm font-black uppercase tracking-wider">
+                ⚠️ {slowLearnersCount} students need your attention
+              </h3>
             </div>
+            <Link
+              to="/teacher/my-students?filter=slow"
+              className="text-xs font-black text-rose-605 dark:text-rose-400 hover:underline inline-flex items-center space-x-1"
+            >
+              <span>View All Struggling Students</span>
+              <ChevronRight className="h-4.5 w-4.5" />
+            </Link>
           </div>
-          <div className="mt-4">
-            <div className="text-2xl font-black text-amber-600 dark:text-amber-500">{metricsData.escalated}</div>
-            <p className="text-[10px] text-amber-600 font-extrabold mt-1 dark:text-amber-400">Requires intervention</p>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {strugglingStudents.map(student => (
+              <div 
+                key={student.id}
+                className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-805 p-5 rounded-2xl shadow-sm flex flex-col justify-between"
+              >
+                <div>
+                  <h4 className="font-extrabold text-slate-800 dark:text-slate-105 text-sm">{student.name}</h4>
+                  <p className="text-[9px] text-slate-405 font-bold uppercase tracking-wider">{student.rollNumber || 'No Roll'}</p>
+                  
+                  <div className="flex justify-between text-[11px] font-bold text-slate-500 mt-2">
+                    <span>Section: {student.section || 'N/A'}</span>
+                    <span className="text-rose-500 font-black uppercase tracking-wider">{student.performanceLevel || 'slow'}</span>
+                  </div>
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-slate-50 dark:border-slate-805 flex items-center justify-between gap-3">
+                  <Link
+                    to={`/teacher/student/${student.id}`}
+                    className="flex-1 inline-flex items-center justify-center space-x-0.5 rounded-xl bg-brand-50 hover:bg-brand-100 dark:bg-brand-950/20 text-brand-605 font-bold text-[10px] py-2 transition-all text-center"
+                  >
+                    <span>View Profile</span>
+                    <ChevronRight className="h-3 w-3" />
+                  </Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Today's Activity Timeline & AI Recommendations Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Today's Activity Timeline */}
+        <div className="bg-white dark:bg-[#1E293B] border border-slate-100 dark:border-slate-805 p-6 rounded-3xl shadow-sm space-y-6">
+          <div className="flex justify-between items-center border-b border-slate-50 dark:border-slate-800 pb-3">
+            <h3 className="text-sm font-black text-slate-800 dark:text-slate-100 uppercase tracking-wider flex items-center space-x-2">
+              <Activity className="h-4.5 w-4.5 text-brand-605" />
+              <span>Today's Activity Timeline</span>
+            </h3>
+            <span className="text-[10px] bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full font-bold text-slate-500">Live feed</span>
+          </div>
+
+          <div className="relative border-l-2 border-slate-100 dark:border-slate-800 ml-3 space-y-6">
+            {/* Timeline Item 1 */}
+            <div className="relative pl-6">
+              <span className="absolute -left-[9px] top-1.5 h-4 w-4 rounded-full border-2 border-white dark:border-[#1E293B] bg-emerald-500 shadow-sm" />
+              <div className="text-[10px] text-slate-400 font-bold uppercase">10:30 AM</div>
+              <h4 className="font-extrabold text-xs text-slate-800 dark:text-slate-200 mt-0.5">Doubt Resolved by Peer</h4>
+              <p className="text-xs text-slate-500 mt-1">
+                Priya Sharma resolved Ravi Kumar's doubt on "Pointers memory allocation" in DBMS.
+              </p>
+            </div>
+
+            {/* Timeline Item 2 */}
+            {slowLearnersCount > 0 && (
+              <div className="relative pl-6">
+                <span className="absolute -left-[9px] top-1.5 h-4 w-4 rounded-full border-2 border-white dark:border-[#1E293B] bg-rose-500 shadow-sm" />
+                <div className="text-[10px] text-slate-400 font-bold uppercase">11:15 AM</div>
+                <h4 className="font-extrabold text-xs text-slate-850 dark:text-slate-205 mt-0.5">Remediation Alert</h4>
+                <p className="text-xs text-slate-500 mt-1">
+                  {strugglingStudents[0]?.name || 'Ravi Kumar'} flagged as slow learner (Weak topics: {strugglingStudents[0]?.weakTopics?.join(', ') || 'Recursion'}).
+                </p>
+              </div>
+            )}
+
+            {/* Timeline Item 3 */}
+            <div className="relative pl-6">
+              <span className="absolute -left-[9px] top-1.5 h-4 w-4 rounded-full border-2 border-white dark:border-[#1E293B] bg-indigo-500 shadow-sm" />
+              <div className="text-[10px] text-slate-400 font-bold uppercase">02:15 PM</div>
+              <h4 className="font-extrabold text-xs text-slate-800 dark:text-slate-200 mt-0.5">AI Hint Dispatched</h4>
+              <p className="text-xs text-slate-500 mt-1">
+                Gemini suggested a structured hint to Sneha Reddy on "Deadlock conditions" in OS.
+              </p>
+            </div>
+
+            {/* Timeline Item 4 */}
+            {escalations.length > 0 && (
+              <div className="relative pl-6">
+                <span className="absolute -left-[9px] top-1.5 h-4 w-4 rounded-full border-2 border-white dark:border-[#1E293B] bg-amber-500 shadow-sm" />
+                <div className="text-[10px] text-slate-400 font-bold uppercase">03:45 PM</div>
+                <h4 className="font-extrabold text-xs text-amber-605 dark:text-amber-400 mt-0.5">Doubt Escalated to Teacher</h4>
+                <p className="text-xs text-slate-500 mt-1">
+                  Doubt "{escalations[0]?.title}" has exceeded the peer resolution timer and is escalated to you.
+                </p>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Time saved card */}
-        <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm dark:bg-slate-900 dark:border-slate-850 flex flex-col justify-between">
-          <div className="flex justify-between items-start">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Time Saved</span>
-            <div className="p-2 rounded-lg bg-teal-50 text-teal-500 dark:bg-teal-950/20">
-              <Clock className="h-5 w-5" />
-            </div>
+        {/* AI Recommendation Panel */}
+        <div className="bg-white dark:bg-[#1E293B] border border-slate-100 dark:border-slate-805 p-6 rounded-3xl shadow-sm space-y-6">
+          <div className="flex justify-between items-center border-b border-slate-50 dark:border-slate-800 pb-3">
+            <h3 className="text-sm font-black text-slate-800 dark:text-slate-105 uppercase tracking-wider flex items-center space-x-2">
+              <Brain className="h-4.5 w-4.5 text-purple-600" />
+              <span>AI Remediation Insights</span>
+            </h3>
+            <span className="text-[10px] bg-purple-50 text-purple-600 dark:bg-purple-950/20 dark:text-purple-400 px-2 py-0.5 rounded-full font-black">Copilot active</span>
           </div>
-          <div className="mt-4">
-            <div className="text-2xl font-black text-slate-800 dark:text-slate-105">
-              {metricsData.hoursSaved} hrs
-            </div>
-            <p className="text-[10px] text-teal-600 font-extrabold mt-1 dark:text-teal-450">Estimated faculty saved</p>
+
+          <div className="space-y-4">
+            {/* Recommendation 1 */}
+            {slowLearnersCount > 0 ? (
+              <div className="p-4 bg-rose-550/5 border border-rose-550/25 rounded-2xl flex items-start space-x-3.5">
+                <div className="p-2 bg-rose-50 dark:bg-rose-955/25 text-rose-605 rounded-xl">
+                  <AlertTriangle className="h-5 w-5" />
+                </div>
+                <div className="space-y-1.5 flex-1">
+                  <h4 className="font-extrabold text-xs text-slate-800 dark:text-slate-105">Focus Room Suggested</h4>
+                  <p className="text-xs text-slate-550 dark:text-slate-400 leading-relaxed">
+                    {strugglingStudents.map(s => s.name).join(', ')} need assistance. Start a Focus Room on their weak topics.
+                  </p>
+                  <Link
+                    to="/focus-rooms/create"
+                    className="inline-flex items-center space-x-1 text-rose-605 dark:text-rose-455 font-extrabold text-xs hover:underline pt-0.5"
+                  >
+                    <span>Launch OS Remedial Room</span>
+                    <ChevronRight className="h-3 w-3" />
+                  </Link>
+                </div>
+              </div>
+            ) : (
+              <div className="p-4 bg-emerald-500/5 border border-emerald-500/25 rounded-2xl flex items-start space-x-3.5">
+                <div className="p-2 bg-emerald-50 dark:bg-emerald-955/25 text-emerald-600 rounded-xl">
+                  <CheckCircle className="h-5 w-5" />
+                </div>
+                <div className="space-y-1.5 flex-1">
+                  <h4 className="font-extrabold text-xs text-slate-800 dark:text-slate-105">Academic Performance Strong</h4>
+                  <p className="text-xs text-slate-550 dark:text-slate-400 leading-relaxed">
+                    No students currently flagged as slow learners. Consider publishing a competitive coding quest.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Recommendation 2 */}
+            {escalations.length > 0 ? (
+              <div className="p-4 bg-amber-500/5 border border-amber-500/25 rounded-2xl flex items-start space-x-3.5">
+                <div className="p-2 bg-amber-50 dark:bg-amber-955/25 text-amber-600 rounded-xl">
+                  <Clock className="h-5 w-5" />
+                </div>
+                <div className="space-y-1.5 flex-1">
+                  <h4 className="font-extrabold text-xs text-slate-800 dark:text-slate-105">Pending Escalated Doubts</h4>
+                  <p className="text-xs text-slate-550 dark:text-slate-400 leading-relaxed">
+                    There are {escalations.length} unresolved escalations. Manual intervention is recommended.
+                  </p>
+                  <Link
+                    to="/teacher/escalations"
+                    className="inline-flex items-center space-x-1 text-amber-605 dark:text-amber-455 font-extrabold text-xs hover:underline pt-0.5"
+                  >
+                    <span>Review Escalation Queue</span>
+                    <ChevronRight className="h-3 w-3" />
+                  </Link>
+                </div>
+              </div>
+            ) : (
+              <div className="p-4 bg-indigo-500/5 border border-indigo-500/25 rounded-2xl flex items-start space-x-3.5">
+                <div className="p-2 bg-indigo-50 dark:bg-indigo-955/25 text-indigo-600 rounded-xl">
+                  <Zap className="h-5 w-5" />
+                </div>
+                <div className="space-y-1.5 flex-1">
+                  <h4 className="font-extrabold text-xs text-slate-800 dark:text-slate-105">Gamification Rule Tuning</h4>
+                  <p className="text-xs text-slate-550 dark:text-slate-400 leading-relaxed">
+                    DBMS doubt velocity is low this week. We recommend doubling solver reputation weights to boost student resolution rates.
+                  </p>
+                  <Link
+                    to="/teacher/rules"
+                    className="inline-flex items-center space-x-1 text-indigo-650 dark:text-indigo-400 font-extrabold text-xs hover:underline pt-0.5"
+                  >
+                    <span>Adjust Reward Rules</span>
+                    <ChevronRight className="h-3 w-3" />
+                  </Link>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -358,7 +636,7 @@ export const TeacherDashboard: React.FC = () => {
                   outerRadius={85}
                   paddingAngle={5}
                   dataKey="value"
-                  label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                  label={({ name, percent }) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`}
                 >
                   {formattedPieData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />

@@ -7,6 +7,10 @@ import * as analyticsController from '../controllers/analyticsController';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { Subject } from '../models/Schemas';
 import aiRoutes from './aiRoutes';
+import focusRoomRouter from './focusRoomRoutes';
+import * as focusRoomController from '../controllers/focusRoomController';
+import allocationRouter from './allocationRoutes';
+import progressRouter from './progressRoutes';
 
 const router = Router();
 
@@ -53,5 +57,19 @@ router.get('/analytics/topic-heatmap', authenticateToken, analyticsController.ge
 
 // AI Learning Assistant Routes
 router.use('/ai', aiRoutes);
+
+// Allocation Routes
+router.use('/allocation', allocationRouter);
+
+// Progress Routes
+router.use('/progress', progressRouter);
+
+// Focus Room Routes
+router.use('/focus-rooms', focusRoomRouter);
+router.use('/focus-room', focusRoomRouter);
+
+// Notification Routes
+router.get('/notifications', authenticateToken, focusRoomController.getUserNotifications);
+router.post('/notifications/:id/read', authenticateToken, focusRoomController.markNotificationRead);
 
 export default router;

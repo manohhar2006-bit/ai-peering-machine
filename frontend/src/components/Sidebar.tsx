@@ -11,7 +11,8 @@ import {
   AlertTriangle,
   Settings,
   LineChart,
-  Activity
+  Activity,
+  Users
 } from 'lucide-react';
 
 export const Sidebar: React.FC = () => {
@@ -23,6 +24,7 @@ export const Sidebar: React.FC = () => {
     { to: '/student/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { to: '/ask-doubt', label: 'Ask Doubt', icon: HelpCircle },
     { to: '/feed', label: 'Doubt Feed', icon: Compass },
+    { to: '/student/focus-rooms', label: 'Focus Rooms', icon: Users },
     { to: '/leaderboard', label: 'Leaderboard', icon: Trophy },
     { to: '/rewards', label: 'Rewards & Badges', icon: Award },
     { to: '/profile', label: 'Profile', icon: User }
@@ -30,9 +32,11 @@ export const Sidebar: React.FC = () => {
 
   const teacherLinks = [
     { to: '/teacher/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { to: '/teacher/my-students', label: 'My Students', icon: Users },
+    { to: '/teacher/progress', label: 'Student Progress', icon: LineChart },
+    { to: '/teacher/focus-rooms', label: 'Focus Rooms', icon: Users },
     { to: '/teacher/monitoring', label: 'Doubt Monitoring', icon: Activity },
     { to: '/teacher/escalations', label: 'Escalation Queue', icon: AlertTriangle },
-    { to: '/teacher/analytics', label: 'Analytics', icon: LineChart },
     { to: '/teacher/rules', label: 'Reward Rules', icon: Settings }
   ];
 

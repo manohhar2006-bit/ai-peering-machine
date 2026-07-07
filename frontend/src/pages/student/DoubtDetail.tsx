@@ -529,6 +529,7 @@ export const DoubtDetail: React.FC = () => {
           handleRequestHint={handleRequestHint}
           isEscalated={isEscalated}
           escalationReason={escalationReason}
+          userRole={user?.role as 'student' | 'teacher'}
         />
       </div>
 

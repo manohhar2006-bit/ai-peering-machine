@@ -18,6 +18,19 @@ import { TeacherDashboard } from './pages/teacher/Dashboard';
 import { DoubtMonitoring } from './pages/teacher/DoubtMonitoring';
 import { EscalationQueue } from './pages/teacher/EscalationQueue';
 import { RewardRules } from './pages/teacher/RewardRules';
+import { FocusRoomsList } from './pages/FocusRoomsList';
+import { CreateFocusRoom } from './pages/CreateFocusRoom';
+import { FocusRoomDetails } from './pages/FocusRoomDetails';
+
+// Allocation & Progress Pages (Teacher & Student)
+import { MyStudents } from './pages/teacher/MyStudents';
+import { AssignStudents } from './pages/teacher/AssignStudents';
+import { StudentProfile } from './pages/teacher/StudentProfile';
+import { TeacherFocusRooms } from './pages/teacher/TeacherFocusRooms';
+import { TeacherFocusRoomDetail } from './pages/teacher/TeacherFocusRoomDetail';
+import { StudentProgressOverview } from './pages/teacher/StudentProgressOverview';
+import { StudentFocusRooms } from './pages/student/StudentFocusRooms';
+import { StudentFocusRoomDetail } from './pages/student/StudentFocusRoomDetail';
 
 // Auth Guard component for logged-in users
 const RequireAuth: React.FC<{ children: React.ReactNode; allowedRole?: 'student' | 'teacher' }> = ({ children, allowedRole }) => {
@@ -59,11 +72,26 @@ const AppLayout: React.FC = () => {
             <Route path="/rewards" element={<RequireAuth allowedRole="student"><Rewards /></RequireAuth>} />
             <Route path="/profile" element={<RequireAuth allowedRole="student"><Profile /></RequireAuth>} />
             
+            {/* Student Focus Rooms */}
+            <Route path="/student/focus-rooms" element={<RequireAuth allowedRole="student"><StudentFocusRooms /></RequireAuth>} />
+            <Route path="/student/focus-rooms/:roomId" element={<RequireAuth allowedRole="student"><StudentFocusRoomDetail /></RequireAuth>} />
+            
             {/* General Doubt Detail - both Student and Teacher can open */}
             <Route path="/doubt/:id" element={<RequireAuth><DoubtDetail /></RequireAuth>} />
 
+            {/* Focus Rooms Pages */}
+            <Route path="/focus-rooms" element={<RequireAuth><FocusRoomsList /></RequireAuth>} />
+            <Route path="/focus-rooms/create" element={<RequireAuth allowedRole="teacher"><CreateFocusRoom /></RequireAuth>} />
+            <Route path="/focus-rooms/:id" element={<RequireAuth><FocusRoomDetails /></RequireAuth>} />
+
             {/* Teacher Pages */}
             <Route path="/teacher/dashboard" element={<RequireAuth allowedRole="teacher"><TeacherDashboard /></RequireAuth>} />
+            <Route path="/teacher/my-students" element={<RequireAuth allowedRole="teacher"><MyStudents /></RequireAuth>} />
+            <Route path="/teacher/assign-students" element={<RequireAuth allowedRole="teacher"><AssignStudents /></RequireAuth>} />
+            <Route path="/teacher/student/:studentId" element={<RequireAuth allowedRole="teacher"><StudentProfile /></RequireAuth>} />
+            <Route path="/teacher/focus-rooms" element={<RequireAuth allowedRole="teacher"><TeacherFocusRooms /></RequireAuth>} />
+            <Route path="/teacher/focus-rooms/:roomId" element={<RequireAuth allowedRole="teacher"><TeacherFocusRoomDetail /></RequireAuth>} />
+            <Route path="/teacher/progress" element={<RequireAuth allowedRole="teacher"><StudentProgressOverview /></RequireAuth>} />
             <Route path="/teacher/monitoring" element={<RequireAuth allowedRole="teacher"><DoubtMonitoring /></RequireAuth>} />
             <Route path="/teacher/escalations" element={<RequireAuth allowedRole="teacher"><EscalationQueue /></RequireAuth>} />
             <Route path="/teacher/analytics" element={<RequireAuth allowedRole="teacher"><TeacherDashboard /></RequireAuth>} />

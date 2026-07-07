@@ -1,5 +1,5 @@
 import { Response } from 'express';
-import { Doubt, Subject, AIAnalysis, User, StudentProfile, Escalation, Hint } from '../models/Schemas';
+import { Doubt, Subject, AIAnalysis, User, StudentProfile, Escalation, HintHistory } from '../models/Schemas';
 import { AuthRequest } from '../middleware/auth';
 import { AIService } from '../services/aiService';
 import { GamificationService } from '../services/gamificationService';
@@ -198,7 +198,7 @@ export const updateDoubtStatus = async (req: AuthRequest, res: Response) => {
     } else if (status === 'ai_hinted') {
       doubt.resolvedAt = new Date();
       doubt.resolvedBy = 'ai';
-      const hintCount = await Hint.countDocuments({ doubtId: doubt._id });
+      const hintCount = await HintHistory.countDocuments({ doubtId: doubt._id, ladderIndex: { $gte: 0 } });
       doubt.hintsUsed = hintCount;
     } else if (status === 'teacher_solved') {
       doubt.resolvedAt = new Date();

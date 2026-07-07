@@ -1,7 +1,23 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
-import { User, StudentProfile, TeacherProfile, Subject, Doubt, Answer, Badge, Escalation, AIAnalysis, FacultyAnalytics } from './models/Schemas';
+import { 
+  User, 
+  StudentProfile, 
+  TeacherProfile, 
+  Subject, 
+  Doubt, 
+  Answer, 
+  Badge, 
+  Escalation, 
+  AIAnalysis, 
+  FacultyAnalytics, 
+  FocusRoom, 
+  FocusRoomMember, 
+  FocusRoomResource, 
+  FocusRoomDiscussion, 
+  FocusRoomAnalytics 
+} from './models/Schemas';
 
 dotenv.config();
 
@@ -37,7 +53,12 @@ const seed = async () => {
       Badge.deleteMany({}),
       Escalation.deleteMany({}),
       AIAnalysis.deleteMany({}),
-      FacultyAnalytics.deleteMany({})
+      FacultyAnalytics.deleteMany({}),
+      FocusRoom.deleteMany({}),
+      FocusRoomMember.deleteMany({}),
+      FocusRoomResource.deleteMany({}),
+      FocusRoomDiscussion.deleteMany({}),
+      FocusRoomAnalytics.deleteMany({})
     ]);
     console.log('Cleared existing database records.');
 
@@ -46,227 +67,187 @@ const seed = async () => {
     await Badge.insertMany(badgesData);
     console.log('Seeded subjects and badges.');
 
-    // 2. Insert Users (Password: password123)
-    const passwordHash = await bcrypt.hash('password123', 10);
+    // 2. Insert Users
+    const passwordHashStudent = await bcrypt.hash('student123', 10);
+    const passwordHashTeacher = await bcrypt.hash('teacher123', 10);
+    const passwordHashManohhar = await bcrypt.hash('manohhar123', 10);
 
-    // Create Teacher
+    // Create Teacher Prof. Meena
     const teacherUser = new User({
-      name: 'Dr. Sarah Carter',
-      email: 'teacher@school.edu',
-      passwordHash,
-      role: 'teacher'
+      name: 'Prof. Meena',
+      email: 'teacher@demo.com',
+      passwordHash: passwordHashTeacher,
+      role: 'teacher',
+      sections: ['CSE-A', 'CSE-B'],
+      subjects: ['DBMS', 'OS', 'CN'],
+      department: 'Computer Science'
     });
     await teacherUser.save();
 
     const teacherProfile = new TeacherProfile({
       userId: teacherUser._id,
-      department: 'Science & Engineering'
+      department: 'Computer Science'
     });
     await teacherProfile.save();
 
-    // Create Students
-    const student1 = new User({ name: 'Alex Johnson', email: 'alex@school.edu', passwordHash, role: 'student' });
-    const student2 = new User({ name: 'Jane Smith', email: 'jane@school.edu', passwordHash, role: 'student' });
-    const student3 = new User({ name: 'Sam Wilson', email: 'sam@school.edu', passwordHash, role: 'student' });
+    // Create 8 Students
+    const studentsData = [
+      { name: "Ravi Kumar", email: "ravi@demo.com", passwordHash: passwordHashStudent, section: "CSE-A", rollNumber: "CS001", performanceLevel: "slow" as const, isSlowLearner: true, weakTopics: ["Pointers", "Recursion"] },
+      { name: "Priya Sharma", email: "priya@demo.com", passwordHash: passwordHashStudent, section: "CSE-A", rollNumber: "CS002", performanceLevel: "good" as const, isSlowLearner: false, weakTopics: ["Normalization"] },
+      { name: "Arjun Patel", email: "arjun@demo.com", passwordHash: passwordHashStudent, section: "CSE-B", rollNumber: "CS003", performanceLevel: "excellent" as const, isSlowLearner: false, weakTopics: [] },
+      { name: "Sneha Reddy", email: "sneha@demo.com", passwordHash: passwordHashStudent, section: "CSE-A", rollNumber: "CS004", performanceLevel: "slow" as const, isSlowLearner: true, weakTopics: ["Deadlock", "Scheduling"] },
+      { name: "Karan Singh", email: "karan@demo.com", passwordHash: passwordHashStudent, section: "CSE-B", rollNumber: "CS005", performanceLevel: "average" as const, isSlowLearner: false, weakTopics: ["SQL Joins"] },
+      { name: "Ananya Das", email: "ananya@demo.com", passwordHash: passwordHashStudent, section: "CSE-B", rollNumber: "CS006", performanceLevel: "slow" as const, isSlowLearner: true, weakTopics: ["Trees", "Graphs"] },
+      { name: "Manohhar", email: "manohhar@demo.com", passwordHash: passwordHashManohhar, section: "CSE-A", rollNumber: "CS007", performanceLevel: "excellent" as const, isSlowLearner: false, weakTopics: [] },
+      { name: "Demo Student", email: "student@demo.com", passwordHash: passwordHashStudent, section: "CSE-A", rollNumber: "CS008", performanceLevel: "average" as const, isSlowLearner: false, weakTopics: ["OS Concepts"] }
+    ];
+
+    const studentUsers = [];
+    for (const s of studentsData) {
+      const student = new User({
+        name: s.name,
+        email: s.email,
+        passwordHash: s.passwordHash,
+        role: 'student',
+        section: s.section,
+        rollNumber: s.rollNumber,
+        branch: 'Computer Science',
+        performanceLevel: s.performanceLevel,
+        isSlowLearner: s.isSlowLearner,
+        weakTopics: s.weakTopics,
+        assignedTeacher: teacherUser._id,
+        batch: '2022-2026',
+        department: 'Computer Science'
+      });
+      await student.save();
+      studentUsers.push(student);
+
+      // Create profile
+      const profile = new StudentProfile({
+        userId: student._id,
+        xp: s.performanceLevel === 'excellent' ? 1200 : s.performanceLevel === 'good' ? 800 : s.performanceLevel === 'average' ? 400 : 150,
+        level: s.performanceLevel === 'excellent' ? 3 : s.performanceLevel === 'good' ? 2 : 1,
+        streak: s.isSlowLearner ? 1 : 4,
+        resolvedDoubtsCount: s.performanceLevel === 'excellent' ? 10 : 3,
+        participationCount: 5
+      });
+      await profile.save();
+    }
+
+    const raviUser = studentUsers[0];
+    const priyaUser = studentUsers[1];
+    const arjunUser = studentUsers[2];
+    const snehaUser = studentUsers[3];
+    const karanUser = studentUsers[4];
+    const ananyaUser = studentUsers[5];
+    const manohharUser = studentUsers[6];
+    const demoStudentUser = studentUsers[7];
+
+    // 3. Seed Doubt threads
+    const dbmsSub = subjects.find(s => s.code === 'CS101') || subjects[0];
     
-    await Promise.all([student1.save(), student2.save(), student3.save()]);
-
-    // Create Student Profiles
-    const mathSub = subjects.find(s => s.code === 'MATH101')!;
-    const csSub = subjects.find(s => s.code === 'CS101')!;
-    const physSub = subjects.find(s => s.code === 'PHYS101')!;
-
-    const profile1 = new StudentProfile({
-      userId: student1._id,
-      xp: 1250,
-      level: 3,
-      streak: 4,
-      resolvedDoubtsCount: 8,
-      participationCount: 5,
-      subjectReputation: new Map([
-        [mathSub._id.toString(), 300],
-        [csSub._id.toString(), 150]
-      ]),
-      badges: [{ badgeId: 'first_solve', earnedAt: new Date() }]
-    });
-
-    const profile2 = new StudentProfile({
-      userId: student2._id,
-      xp: 800,
-      level: 2,
-      streak: 3,
-      resolvedDoubtsCount: 4,
-      participationCount: 2,
-      subjectReputation: new Map([
-        [csSub._id.toString(), 200],
-        [physSub._id.toString(), 100]
-      ]),
-      badges: [{ badgeId: 'first_solve', earnedAt: new Date() }]
-    });
-
-    const profile3 = new StudentProfile({
-      userId: student3._id,
-      xp: 150,
-      level: 1,
-      streak: 1,
-      resolvedDoubtsCount: 0,
-      participationCount: 1,
-      subjectReputation: new Map()
-    });
-
-    await Promise.all([profile1.save(), profile2.save(), profile3.save()]);
-    console.log('Seeded teachers, students, and user profiles.');
-
-    // 3. Seed Doubts & Answers
-    // Doubt 1: Calculus Limit Doubt by Student 3, Solved by Student 1
     const doubt1 = new Doubt({
-      title: 'Finding the limit of sin(x)/x as x approaches 0',
-      description: 'Can someone explain the conceptual proof of why the limit of sin(x)/x equals 1 as x approaches 0? I know the formula but don\'t understand the geometric intuition.',
-      askerId: student3._id,
-      subjectId: mathSub._id,
-      topic: 'Calculus',
-      difficulty: 'medium',
-      status: 'peer_solved',
-      resolvedAt: new Date(Date.now() - 4 * 60 * 60 * 1000),
-      resolvedBy: 'peer',
-      timeToResolve: 45,
-      peerResponderIds: [student1._id, student2._id]
+      title: 'Pointers memory allocation',
+      description: 'Struggling with pointer allocation and dynamic array declarations.',
+      askerId: raviUser._id,
+      subjectId: dbmsSub._id,
+      topic: 'Pointers',
+      difficulty: 'easy',
+      status: 'open',
+      createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
     });
     await doubt1.save();
 
-    const analysis1 = new AIAnalysis({
-      doubtId: doubt1._id,
-      topic: 'Calculus Limits',
-      difficulty: 'medium',
-      isPeerAnswerable: true,
-      explanation: 'Asker is looking for a geometric proof of the fundamental trigonometric limit.'
-    });
-    await analysis1.save();
-
-    const answer1 = new Answer({
-      doubtId: doubt1._id,
-      solverId: student1._id,
-      content: 'This can be proved geometrically using the Squeeze Theorem and a unit circle. If you draw a sector of a circle with angle x, you can bound the area of the inner triangle (1/2 * sin x), the sector itself (1/2 * x), and the outer triangle (1/2 * tan x). This gives: sin x < x < tan x. Dividing by sin x gives: 1 < x/sin x < 1/cos x. Inverting this gives: cos x < sin x/x < 1. As x -> 0, cos x -> 1. By the Squeeze Theorem, sin x/x must also approach 1.',
-      aiEvaluation: {
-        correctness: 98,
-        clarity: 95,
-        completeness: 95,
-        usefulness: 100,
-        score: 97,
-        feedback: 'Superb and mathematically rigorous explanation using the Squeeze Theorem and geometric bounding.'
-      },
-      pointsAwarded: 150,
-      isAccepted: true
-    });
-    await answer1.save();
-
-    // Doubt 2: SQL Join Doubt by Student 1, Solved by Student 2
     const doubt2 = new Doubt({
-      title: 'Difference between LEFT JOIN and RIGHT JOIN in SQL',
-      description: 'I am building a database schema and I get confused between LEFT JOIN and RIGHT JOIN. When would I choose RIGHT JOIN over LEFT JOIN? Aren\'t they functionally the same just inverted?',
-      askerId: student1._id,
-      subjectId: csSub._id,
-      topic: 'Databases',
-      difficulty: 'easy',
-      status: 'peer_solved',
-      resolvedAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
-      resolvedBy: 'peer',
-      timeToResolve: 30,
-      peerResponderIds: [student2._id]
+      title: 'Deadlocks Bankers Safety Condition',
+      description: 'Why do we need safety condition check in Bankers algorithm?',
+      askerId: snehaUser._id,
+      subjectId: dbmsSub._id,
+      topic: 'Deadlock',
+      difficulty: 'medium',
+      status: 'escalated',
+      createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000)
     });
     await doubt2.save();
 
-    const analysis2 = new AIAnalysis({
+    const escalation2 = new Escalation({
       doubtId: doubt2._id,
-      topic: 'Database Joins',
-      difficulty: 'easy',
-      isPeerAnswerable: true,
-      explanation: 'Queries around SQL relational joins, specifically left vs right outer joins.'
-    });
-    await analysis2.save();
-
-    const answer2 = new Answer({
-      doubtId: doubt2._id,
-      solverId: student2._id,
-      content: 'Yes, they are functionally identical but inverted. A LEFT JOIN returns all records from the left table, and the matched records from the right table. A RIGHT JOIN does the exact opposite: all records from the right table, and matched records from the left. Usually, developers prefer LEFT JOIN because we read left-to-right, making the query easier to read. `SELECT * FROM A LEFT JOIN B` is the exact same as `SELECT * FROM B RIGHT JOIN A`.',
-      aiEvaluation: {
-        correctness: 95,
-        clarity: 90,
-        completeness: 85,
-        usefulness: 90,
-        score: 90,
-        feedback: 'Correct and logical. Clearly points out that LEFT JOIN is preferred for readability.'
-      },
-      pointsAwarded: 100,
-      isAccepted: true
-    });
-    await answer2.save();
-
-    // Doubt 3: Physics Doubt (Open)
-    const doubt3 = new Doubt({
-      title: 'Why is static friction higher than kinetic friction?',
-      description: 'I understand that friction opposes motion, but why is the coefficient of static friction always higher than the coefficient of kinetic friction? What happens at the microscopic level?',
-      askerId: student2._id,
-      subjectId: physSub._id,
-      topic: 'Classical Mechanics',
-      difficulty: 'medium',
-      status: 'open',
-      peerResponderIds: [student1._id]
-    });
-    await doubt3.save();
-
-    const analysis3 = new AIAnalysis({
-      doubtId: doubt3._id,
-      topic: 'Friction Dynamics',
-      difficulty: 'medium',
-      isPeerAnswerable: true,
-      explanation: 'Microscopic inquiry on static vs kinetic friction coefficients.'
-    });
-    await analysis3.save();
-
-    // Doubt 4: High-difficulty Escalated Doubt
-    const doubt4 = new Doubt({
-      title: 'Deriving the Schrödinger equation from classical wave equations',
-      description: 'Can we formally derive the time-dependent Schrödinger equation starting purely from classical wave equations and de Broglie relation? I tried but got stuck on why the imaginary unit i is necessary.',
-      askerId: student1._id,
-      subjectId: physSub._id,
-      topic: 'Quantum Mechanics',
-      difficulty: 'hard',
-      status: 'escalated',
-      escalatedAt: new Date(Date.now() - 10 * 60 * 60 * 1000),
-      peerResponderIds: []
-    });
-    await doubt4.save();
-
-    const analysis4 = new AIAnalysis({
-      doubtId: doubt4._id,
-      topic: 'Quantum Mechanics',
-      difficulty: 'hard',
-      isPeerAnswerable: false,
-      explanation: 'Highly complex quantum derivation. Requires teacher level expertise.'
-    });
-    await analysis4.save();
-
-    const escalation = new Escalation({
-      doubtId: doubt4._id,
-      reason: 'low-confidence',
+      reason: 'timeout',
       status: 'pending',
-      priority: 'high'
+      priority: 'high',
+      escalatedAt: new Date()
     });
-    await escalation.save();
+    await escalation2.save();
 
-    // 4. Seed FacultyAnalytics weekly metrics for historical charts
+    // 4. Seed FacultyAnalytics weekly trend data
     const analyticsData = [
-      { weekNumber: 1, year: 2026, totalDoubts: 15, peerSolved: 5, aiHinted: 2, escalated: 8, teacherSolved: 7, workloadReductionPercent: 46.7, minutesSaved: 35 },
-      { weekNumber: 2, year: 2026, totalDoubts: 18, peerSolved: 8, aiHinted: 4, escalated: 6, teacherSolved: 5, workloadReductionPercent: 66.7, minutesSaved: 60 },
-      { weekNumber: 3, year: 2026, totalDoubts: 25, peerSolved: 12, aiHinted: 7, escalated: 6, teacherSolved: 5, workloadReductionPercent: 76.0, minutesSaved: 95 },
-      { weekNumber: 4, year: 2026, totalDoubts: 28, peerSolved: 15, aiHinted: 9, escalated: 4, teacherSolved: 3, workloadReductionPercent: 85.7, minutesSaved: 120 },
-      { weekNumber: 5, year: 2026, totalDoubts: 32, peerSolved: 18, aiHinted: 12, escalated: 2, teacherSolved: 2, workloadReductionPercent: 93.8, minutesSaved: 150 },
-      { weekNumber: 6, year: 2026, totalDoubts: 38, peerSolved: 22, aiHinted: 14, escalated: 2, teacherSolved: 2, workloadReductionPercent: 94.7, minutesSaved: 180 }
+      { weekNumber: 20, year: 2026, totalDoubts: 15, peerSolved: 10, aiHinted: 3, escalated: 2, teacherSolved: 0, workloadReductionPercent: 86.7, minutesSaved: 300 },
+      { weekNumber: 21, year: 2026, totalDoubts: 18, peerSolved: 12, aiHinted: 4, escalated: 2, teacherSolved: 0, workloadReductionPercent: 88.9, minutesSaved: 360 },
+      { weekNumber: 22, year: 2026, totalDoubts: 25, peerSolved: 18, aiHinted: 5, escalated: 2, teacherSolved: 0, workloadReductionPercent: 92.0, minutesSaved: 540 },
+      { weekNumber: 23, year: 2026, totalDoubts: 30, peerSolved: 22, aiHinted: 6, escalated: 2, teacherSolved: 0, workloadReductionPercent: 93.3, minutesSaved: 660 },
+      { weekNumber: 24, year: 2026, totalDoubts: 35, peerSolved: 28, aiHinted: 5, escalated: 2, teacherSolved: 0, workloadReductionPercent: 94.3, minutesSaved: 840 }
     ];
     await FacultyAnalytics.insertMany(analyticsData);
     console.log('Seeded FacultyAnalytics weekly trend data.');
 
+    // 5. Seed Focus Room
+    const focusRoom = new FocusRoom({
+      name: 'Slow Learners - OS Batch',
+      description: 'Targeted focus room for Deadlock and Scheduling reinforcement.',
+      subjectId: dbmsSub._id,
+      topic: 'Deadlock and Scheduling',
+      learningObjectives: ['Understand Deadlocks', 'Resource Allocation Conditions', 'Scheduling Algorithms'],
+      creatorId: teacherUser._id,
+      deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      visibility: 'public',
+      teacher: teacherUser._id,
+      subject: 'Operating Systems',
+      students: [raviUser._id, snehaUser._id, ananyaUser._id],
+      isActive: true,
+      roomType: 'slow_learner',
+      questions: [
+        {
+          questionText: "What is deadlock?",
+          subject: "Operating Systems",
+          difficulty: "easy",
+          addedBy: "teacher",
+          topic: "Deadlocks",
+          hint: "Process circular waiting block.",
+          expectedAnswer: "A deadlock happens when processes wait on resources held by each other."
+        },
+        {
+          questionText: "Explain the four conditions for deadlock",
+          subject: "Operating Systems",
+          difficulty: "medium",
+          addedBy: "teacher",
+          topic: "Deadlocks",
+          hint: "Mutual exclusion, Hold & wait, No preemption, Circular wait.",
+          expectedAnswer: "The four conditions are Mutual exclusion, Hold & wait, No preemption, and Circular wait."
+        }
+      ]
+    });
+    await focusRoom.save();
+
+    // Enroll students in Focus Room
+    const member1 = new FocusRoomMember({ roomId: focusRoom._id, userId: raviUser._id, progress: 50, xpEarned: 100 });
+    const member2 = new FocusRoomMember({ roomId: focusRoom._id, userId: snehaUser._id, progress: 0, xpEarned: 0 });
+    const member3 = new FocusRoomMember({ roomId: focusRoom._id, userId: ananyaUser._id, progress: 25, xpEarned: 50 });
+    await Promise.all([member1.save(), member2.save(), member3.save()]);
+
+    // Seed room analytics
+    const roomAnalytics = new FocusRoomAnalytics({
+      roomId: focusRoom._id,
+      completionRate: 25,
+      averageScore: 90,
+      hintsUsed: 1,
+      questionsSolved: 1,
+      questionsPending: 1,
+      teacherInterventions: 1,
+      peerLearningSuccessRate: 100
+    });
+    await roomAnalytics.save();
+
+    console.log('Seeded Focus Rooms data.');
     console.log('Seeded doubt threads, AI analyses, answers, and escalations.');
     console.log('Database seeding successfully finished!');
     process.exit(0);
