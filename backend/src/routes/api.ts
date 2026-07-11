@@ -47,6 +47,8 @@ router.get('/answers/doubt/:doubtId', authenticateToken, answerController.getDou
 router.post('/answers/:id/accept', authenticateToken, requireRole('student'), answerController.acceptAnswer);
 router.post('/answers/:id/verify', authenticateToken, requireRole('teacher'), answerController.verifyAnswer);
 router.post('/answers/:id/decision', authenticateToken, requireRole('teacher'), answerController.teacherDecision);
+router.post('/answers/:id/upvote', authenticateToken, answerController.upvoteAnswer);
+
 
 // Hint Routes
 router.post('/hints/request', authenticateToken, requireRole('student'), hintController.requestHint);

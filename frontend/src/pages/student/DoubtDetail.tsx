@@ -22,7 +22,10 @@ import {
   Image,
   RefreshCw,
   Settings,
-  ArrowLeft
+  ArrowLeft,
+  Search,
+  ThumbsUp,
+  Trophy
 } from 'lucide-react';
 
 const API_URL = 'http://localhost:5000/api';
@@ -68,6 +71,66 @@ export const DoubtDetail: React.FC = () => {
   const [maxAttempts, setMaxAttempts] = useState<number | string>('');
   const [allowAnswerEditing, setAllowAnswerEditing] = useState(true);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
+
+  // Community Solution Explorer States
+  const [selectedSolutionId, setSelectedSolutionId] = useState<string>('');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [activeFilter, setActiveFilter] = useState<string>('all');
+  const [isComparing, setIsComparing] = useState<boolean>(false);
+  const [compareAId, setCompareAId] = useState<string>('');
+  const [compareBId, setCompareBId] = useState<string>('');
+  const [isFading, setIsFading] = useState<boolean>(false);
+
+  // Trigger smooth fade transition of 200ms when changing solution or comparison
+  useEffect(() => {
+    setIsFading(true);
+    const timer = setTimeout(() => setIsFading(false), 200);
+    return () => clearTimeout(timer);
+  }, [selectedSolutionId, isComparing]);
+
+  const handleToggleHelpful = async (answerId: string) => {
+    try {
+      const response = await axios.post(`${API_URL}/answers/${answerId}/upvote`);
+      setAnswers(prev => prev.map(ans => {
+        if (ans._id === answerId) {
+          return { ...ans, upvotes: response.data.upvotes };
+        }
+        return ans;
+      }));
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Failed to update helpful status');
+    }
+  };
+
+  const getSortedAnswers = (ansList: any[]) => {
+    return [...ansList].sort((a: any, b: any) => {
+      // 1. Teacher Approved Solution
+      const aTeacher = a.teacherApproved || a.isTeacherVerified ? 1 : 0;
+      const bTeacher = b.teacherApproved || b.isTeacherVerified ? 1 : 0;
+      if (aTeacher !== bTeacher) return bTeacher - aTeacher;
+
+      // 2. Verified 100% Solutions
+      const a100 = (a.aiEvaluation?.correctness === 100 || a.aiScore === 100) ? 1 : 0;
+      const b100 = (b.aiEvaluation?.correctness === 100 || b.aiScore === 100) ? 1 : 0;
+      if (a100 !== b100) return b100 - a100;
+
+      // 3. Highest AI Score
+      const aScore = a.aiScore ?? a.aiEvaluation?.score ?? 0;
+      const bScore = b.aiScore ?? b.aiEvaluation?.score ?? 0;
+      if (aScore !== bScore) return bScore - aScore;
+
+      // 4. Most Helpful Votes (upvotes length)
+      const aVotes = a.upvotes?.length ?? 0;
+      const bVotes = b.upvotes?.length ?? 0;
+      if (aVotes !== bVotes) return bVotes - aVotes;
+
+      // 5. Latest Submission
+      const aTime = new Date(a.createdAt).getTime();
+      const bTime = new Date(b.createdAt).getTime();
+      return bTime - aTime;
+    });
+  };
+
 
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -147,12 +210,19 @@ export const DoubtDetail: React.FC = () => {
 
       const answersResponse = await axios.get(`${API_URL}/answers/doubt/${id}`);
       const data = answersResponse.data;
+      let loadedAnswers = [];
       if (data && typeof data === 'object' && 'unlocked' in data) {
         setIsUnlocked(data.unlocked);
-        setAnswers(data.answers || []);
+        loadedAnswers = data.answers || [];
       } else {
         setIsUnlocked(true);
-        setAnswers(Array.isArray(data) ? data : []);
+        loadedAnswers = Array.isArray(data) ? data : [];
+      }
+      setAnswers(loadedAnswers);
+
+      if (loadedAnswers.length > 0) {
+        const sorted = getSortedAnswers(loadedAnswers);
+        setSelectedSolutionId(prev => prev || sorted[0]._id);
       }
 
       if (user?.role === 'teacher' || (user?.role === 'student' && response.data.doubt.askerId._id === user.id)) {
@@ -398,6 +468,62 @@ export const DoubtDetail: React.FC = () => {
   const currentVersionIdx = activeVersionIndex < versionsCount ? activeVersionIndex : Math.max(0, versionsCount - 1);
   const selectedVersion = myAnswer?.versions?.[currentVersionIdx] || myAnswer || null;
 
+  const renderAnswerContent = (ans: any) => {
+    if (!ans) return null;
+    const format = ans.inputType || 'text';
+
+    if (format === 'image' || format === 'img') {
+      return (
+        <div className="space-y-2">
+          {ans.originalUploadUrl && (
+            <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 max-h-[400px] flex items-center justify-center">
+              <img 
+                src={ans.originalUploadUrl} 
+                alt="Student Submission" 
+                className="max-w-full max-h-[380px] object-contain"
+              />
+            </div>
+          )}
+          {ans.content && (
+            <div className="bg-slate-50 dark:bg-[#0F172A] p-3.5 rounded-xl border border-slate-100 dark:border-slate-800 text-xs text-slate-705 dark:text-slate-300 font-semibold leading-relaxed">
+              <span className="text-[10px] font-bold text-slate-455 block mb-1 uppercase tracking-wider">Extracted Text Transcription</span>
+              <p className="whitespace-pre-wrap">{ans.content}</p>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    if (format === 'pdf') {
+      return (
+        <div className="space-y-2">
+          {ans.originalUploadUrl && (
+            <div className="rounded-xl overflow-hidden border border-slate-205 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 h-[500px]">
+              <iframe 
+                src={ans.originalUploadUrl} 
+                className="w-full h-full border-none"
+                title="Student Submission PDF"
+              />
+            </div>
+          )}
+          {ans.content && (
+            <div className="bg-slate-50 dark:bg-[#0F172A] p-3.5 rounded-xl border border-slate-100 dark:border-slate-800 text-xs text-slate-705 dark:text-slate-300 font-semibold leading-relaxed">
+              <span className="text-[10px] font-bold text-slate-455 block mb-1 uppercase tracking-wider">Extracted Text Transcription</span>
+              <p className="whitespace-pre-wrap">{ans.content}</p>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // Default to text format
+    return (
+      <div className="bg-slate-50 dark:bg-[#0F172A] p-4 rounded-xl border border-slate-105 dark:border-slate-800 text-xs text-slate-705 dark:text-slate-300 font-semibold leading-relaxed whitespace-pre-wrap">
+        {ans.content}
+      </div>
+    );
+  };
+
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       {/* Doubt Details Header Card */}
@@ -525,20 +651,19 @@ export const DoubtDetail: React.FC = () => {
         </div>
       )}
 
-      {/* Main Grid: Left answers, Right sidebars (AI analysis + hints) */}
-      <div className="grid lg:grid-cols-3 gap-8">
+      {/* Main Grid: Community Solution Explorer (70%) and AI Learning Assistant (30%) */}
+      <div className="grid grid-cols-1 lg:grid-cols-10 gap-8">
         
-        {/* Answers List & Editor */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Answers Container */}
+        {/* Left Columns (Community Solution Explorer - 70%) */}
+        <div className="col-span-1 lg:col-span-7 space-y-6">
           <div className="rounded-3xl border border-slate-100 bg-white p-6 shadow-premium dark:bg-[#1E293B] dark:border-slate-800 transition-colors duration-300 space-y-6">
-            <h3 className="text-lg font-bold text-slate-800 mb-2 pb-3 border-b border-slate-50 dark:text-slate-100 dark:border-slate-800 flex items-center space-x-2">
-              <MessageSquare className="h-5 w-5 text-brand-655" />
-              <span>Peer Solver Rooms ({answers.length})</span>
+            <h3 className="text-xl font-bold text-slate-850 mb-4 pb-3 border-b border-slate-100 dark:text-slate-100 dark:border-slate-800 flex items-center space-x-2">
+              <BookOpen className="h-5.5 w-5.5 text-brand-600" />
+              <span>📚 Community Solution Explorer</span>
             </h3>
 
             {!isUnlocked ? (
-              <div className="flex flex-col items-center justify-center py-12 px-6 bg-slate-55 dark:bg-[#0F172A]/40 rounded-3xl border border-dashed border-slate-205 dark:border-slate-850 text-center space-y-3">
+              <div className="flex flex-col items-center justify-center py-12 px-6 bg-slate-50 dark:bg-[#0F172A]/40 rounded-3xl border border-dashed border-slate-200 dark:border-slate-850 text-center space-y-3">
                 <Lock className="h-10 w-10 text-brand-500 animate-pulse" />
                 <h4 className="font-extrabold text-sm text-slate-800 dark:text-slate-200">Attempt this question first to unlock community solutions.</h4>
                 <p className="text-xs text-slate-500 max-w-sm leading-relaxed">
@@ -547,475 +672,563 @@ export const DoubtDetail: React.FC = () => {
               </div>
             ) : (
               <div className="space-y-6">
-                {/* Community Verified Solutions Section */}
+                
+                {/* Search and Filters */}
+                <div className="space-y-3">
+                  <div className="relative">
+                    <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                      <Search className="h-4 w-4 text-slate-400" />
+                    </span>
+                    <input
+                      type="text"
+                      placeholder="Search Student..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:border-brand-500 focus:bg-white focus:outline-none dark:border-slate-800 dark:bg-[#0F172A] dark:text-slate-200 transition-all font-semibold"
+                    />
+                  </div>
+                  
+                  {/* Filter Pills */}
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 scrollbar-thin">
+                    {[
+                      { id: 'all', label: 'All Solutions' },
+                      { id: 'verified', label: 'Verified Only' },
+                      { id: 'teacher_approved', label: 'Teacher Approved' },
+                      { id: '100_percent', label: '100% Score' },
+                      { id: '90_plus', label: '90%+' },
+                      { id: 'most_helpful', label: 'Most Helpful' },
+                      { id: 'latest', label: 'Latest' },
+                      { id: 'text', label: 'Text' },
+                      { id: 'image', label: 'Image' },
+                      { id: 'pdf', label: 'PDF' }
+                    ].map((f) => (
+                      <button
+                        key={f.id}
+                        type="button"
+                        onClick={() => setActiveFilter(f.id)}
+                        className={`px-3 py-1.5 rounded-full text-[10px] font-bold whitespace-nowrap transition-all ${
+                          activeFilter === f.id
+                            ? 'bg-brand-600 text-white shadow-sm'
+                            : 'bg-slate-105 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-305 dark:hover:bg-slate-700'
+                        }`}
+                      >
+                        {f.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Explorer Inner Layout */}
                 {(() => {
-                  const topAnswers = answers.filter((ans: any) => {
-                    const correctness = ans.aiEvaluation?.correctness || 0;
-                    return correctness === 100 || ans.isTeacherVerified || ans.aiScore === 100;
+                  const sorted = getSortedAnswers(answers);
+                  const filtered = sorted.filter(ans => {
+                    if (searchQuery.trim()) {
+                      const q = searchQuery.toLowerCase();
+                      const name = (ans.solverName || '').toLowerCase();
+                      const anon = (ans.anonymousId || '').toLowerCase();
+                      if (!name.includes(q) && !anon.includes(q)) return false;
+                    }
+                    if (activeFilter === 'verified') {
+                      return ans.isTeacherVerified || ans.aiScore === 100 || ans.aiEvaluation?.correctness === 100;
+                    }
+                    if (activeFilter === 'teacher_approved') {
+                      return ans.teacherApproved || ans.isTeacherVerified;
+                    }
+                    if (activeFilter === '100_percent') {
+                      return ans.aiEvaluation?.correctness === 100 || ans.aiScore === 100;
+                    }
+                    if (activeFilter === '90_plus') {
+                      const score = ans.aiScore ?? ans.aiEvaluation?.score ?? 0;
+                      return score >= 90;
+                    }
+                    if (activeFilter === 'most_helpful') {
+                      return ans.upvotes && ans.upvotes.length > 0;
+                    }
+                    if (activeFilter === 'latest') {
+                      const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
+                      return new Date(ans.createdAt).getTime() >= oneDayAgo;
+                    }
+                    if (activeFilter === 'text') {
+                      return ans.inputType === 'text' || !ans.inputType;
+                    }
+                    if (activeFilter === 'image') {
+                      return ans.inputType === 'image';
+                    }
+                    if (activeFilter === 'pdf') {
+                      return ans.inputType === 'pdf';
+                    }
+                    return true;
                   });
 
-                  if (topAnswers.length === 0) return null;
+                  if (filtered.length === 0) {
+                    return (
+                      <div className="flex flex-col items-center justify-center py-16 text-center space-y-3 bg-slate-50/50 dark:bg-[#0F172A]/20 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800">
+                        <BookOpen className="h-10 w-10 text-slate-350" />
+                        <div>
+                          <p className="font-extrabold text-sm text-slate-700 dark:text-slate-200">No community solutions available yet.</p>
+                          <p className="text-xs text-slate-400 mt-1">Be the first student to submit a verified solution.</p>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  const activeSelected = answers.find(a => a._id === selectedSolutionId) || filtered[0];
 
                   return (
-                    <div className="space-y-4 mb-6">
-                      <div className="flex items-center space-x-2 text-brand-655 border-b border-slate-105 dark:border-slate-850 pb-2">
-                        <Sparkles className="h-4.5 w-4.5 text-brand-500 fill-brand-500 animate-float" />
-                        <h4 className="text-xs font-black uppercase tracking-wider text-slate-855 dark:text-slate-200">
-                          Community Verified Solutions ({topAnswers.length})
-                        </h4>
-                      </div>
-                      <div className="grid gap-4">
-                        {topAnswers.map((ans: any) => (
-                          <div key={`top-${ans._id}`} className="bg-gradient-to-tr from-brand-50/50 to-indigo-50/20 dark:from-brand-950/10 dark:to-slate-900/40 rounded-2xl p-5 border border-brand-200/40 dark:border-brand-950/30 space-y-4 shadow-sm relative overflow-hidden transition-all duration-300 hover:shadow-md">
-                            <div className="absolute right-0 top-0 bg-brand-500 text-white text-[9px] font-black uppercase tracking-wider px-3 py-1 rounded-bl-xl">
-                              Verified Solution
-                            </div>
-                            <div className="flex justify-between items-center">
-                              <div className="flex items-center space-x-2">
-                                <div className="h-8 w-8 rounded-full bg-brand-100 text-brand-655 flex items-center justify-center font-bold text-xs">
-                                  {(ans.solverName || 'S').charAt(0)}
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
+                      
+                      {/* Sidebar List */}
+                      <div className="md:col-span-5 space-y-3 max-h-[600px] overflow-y-auto pr-1">
+                        {filtered.map((ans, idx) => {
+                          const isSelected = selectedSolutionId === ans._id;
+                          const isTeacherSolution = ans.teacherApproved || ans.isTeacherVerified;
+                          const isAbsoluteBest = idx === 0 && !searchQuery && activeFilter === 'all';
+                          
+                          let medal = '';
+                          if (isTeacherSolution) {
+                            medal = '🏆';
+                          } else {
+                            const studentIdx = sorted.filter(a => !(a.teacherApproved || a.isTeacherVerified)).findIndex(a => a._id === ans._id);
+                            if (studentIdx === 0) medal = '🥇';
+                            else if (studentIdx === 1) medal = '🥈';
+                            else if (studentIdx === 2) medal = '🥉';
+                          }
+
+                          const score = ans.aiScore ?? ans.aiEvaluation?.score ?? 0;
+                          const xp = ans.pointsAwarded ?? 0;
+                          const upvotesCount = ans.upvotes?.length ?? 0;
+
+                          return (
+                            <div
+                              key={ans._id}
+                              onClick={() => {
+                                setIsComparing(false);
+                                setSelectedSolutionId(ans._id);
+                              }}
+                              className={`p-3.5 rounded-2xl cursor-pointer transition-all border ${
+                                isAbsoluteBest
+                                  ? isSelected
+                                    ? 'border-amber-500 bg-amber-50/20 dark:bg-amber-950/20 shadow-[0_0_12px_rgba(245,158,11,0.25)]'
+                                    : 'border-amber-400/80 bg-white hover:bg-amber-50/10 dark:bg-[#1E293B] dark:border-amber-500/50 shadow-[0_0_10px_rgba(245,158,11,0.15)]'
+                                  : isSelected
+                                  ? 'border-brand-600 bg-brand-50/40 dark:bg-brand-950/15 dark:border-brand-550'
+                                  : 'border-slate-100 bg-white hover:bg-slate-50 dark:bg-[#1E293B] dark:border-slate-800 dark:hover:bg-slate-800/40'
+                              }`}
+                            >
+                              <div className="flex justify-between items-start">
+                                <div className="flex items-center space-x-1.5 min-w-0">
+                                  <span className="text-base flex-shrink-0">{medal}</span>
+                                  <span className="font-extrabold text-xs text-slate-800 dark:text-slate-200 truncate">
+                                    {isTeacherSolution ? 'Teacher Solution' : ans.solverName}
+                                  </span>
                                 </div>
-                                <div>
-                                  <h4 className="font-extrabold text-xs text-slate-700 dark:text-slate-200">
-                                    {ans.solverName}
-                                  </h4>
-                                  <p className="text-[9px] text-slate-400">
-                                    Submitted on {new Date(ans.createdAt).toLocaleDateString()}
-                                  </p>
-                                </div>
+                                <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                                  score >= 85 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400' :
+                                  score >= 50 ? 'bg-brand-100 text-brand-700 dark:bg-brand-950/40 dark:text-brand-400' :
+                                  'bg-rose-100 text-rose-700 dark:bg-rose-955/20'
+                                }`}>
+                                  {score}%
+                                </span>
                               </div>
-                              <span className="flex items-center space-x-1 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-455 px-2 py-0.5 text-[10px] font-black">
-                                <CheckCircle className="h-3.5 w-3.5 fill-emerald-55 text-white" />
-                                <span>Verified Solution ({ans.aiScore || ans.aiEvaluation?.score || 100}%)</span>
-                              </span>
+
+                              <div className="flex items-center flex-wrap gap-2.5 mt-2 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                                <span>{new Date(ans.createdAt).toLocaleDateString()}</span>
+                                <span>•</span>
+                                <span className="capitalize">{ans.inputType || 'Text'}</span>
+                                <span>•</span>
+                                <span className="text-brand-600 dark:text-brand-400 font-black">+{xp} XP</span>
+                                {upvotesCount > 0 && (
+                                  <>
+                                    <span>•</span>
+                                    <span className="flex items-center space-x-0.5 text-amber-600 dark:text-amber-500 font-black normal-case">
+                                      <ThumbsUp className="h-3 w-3 fill-amber-500 text-white" />
+                                      <span>{upvotesCount}</span>
+                                    </span>
+                                  </>
+                                )}
+                              </div>
+
+                              {isAbsoluteBest && (
+                                <div className="mt-2 text-[9px] font-black uppercase tracking-wider text-amber-650 dark:text-amber-500 bg-amber-100/40 dark:bg-amber-955/20 px-2 py-0.5 rounded-lg inline-block">
+                                  {isTeacherSolution ? '🏆 Teacher Recommended' : '✨ Best Community Solution'}
+                                </div>
+                              )}
                             </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Right Selected Solution View / Compare Workspace */}
+                      <div className="md:col-span-7 border-l border-slate-100 dark:border-slate-800 pl-6 space-y-6">
+                        
+                        <div className="flex justify-between items-center pb-2 border-b border-slate-100 dark:border-slate-800">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!isComparing) {
+                                setCompareAId(selectedSolutionId || filtered[0]?._id || '');
+                                setCompareBId(filtered[1]?._id || filtered[0]?._id || '');
+                              }
+                              setIsComparing(prev => !prev);
+                            }}
+                            className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-205 text-slate-705 rounded-xl text-xs font-black transition-all dark:bg-slate-800 dark:text-slate-200 flex items-center space-x-1.5 active:scale-95 border border-slate-200 dark:border-slate-700"
+                          >
+                            <RefreshCw className="h-3.5 w-3.5" />
+                            <span>{isComparing ? '← Back to Explorer' : 'Compare Solutions'}</span>
+                          </button>
+                          
+                          {!isComparing && (
+                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                              Single View
+                            </span>
+                          )}
+                        </div>
+
+                        {isComparing ? (
+                          /* COMPARISON WORKSPACE */
+                          <div className={`space-y-6 transition-opacity duration-200 ${isFading ? 'opacity-0' : 'opacity-100'}`}>
                             
-                            {ans.inputType === 'image' && ans.originalUploadUrl ? (
-                              <div className="rounded-2xl overflow-hidden border border-slate-100 bg-slate-50 dark:bg-slate-900 dark:border-slate-800 max-h-60 flex items-center justify-center">
-                                <img src={ans.originalUploadUrl} alt="Peer uploaded solution" className="max-h-60 object-contain" />
+                            {/* Comparison selectors */}
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Solution A</label>
+                                <select
+                                  value={compareAId}
+                                  onChange={(e) => setCompareAId(e.target.value)}
+                                  className="w-full text-xs rounded-xl border border-slate-200 bg-slate-50 py-2 px-3 text-slate-700 font-bold focus:outline-none dark:bg-[#0F172A] dark:border-slate-800 dark:text-slate-350"
+                                >
+                                  {answers.map(ans => (
+                                    <option key={`compA-${ans._id}`} value={ans._id}>{ans.solverName} ({ans.aiScore ?? ans.aiEvaluation?.score ?? 0}%)</option>
+                                  ))}
+                                </select>
                               </div>
-                            ) : ans.inputType === 'pdf' && ans.originalUploadUrl ? (
-                              <div className="rounded-2xl overflow-hidden border border-slate-100 bg-slate-50 dark:bg-slate-900 dark:border-slate-800 h-60">
-                                <iframe src={ans.originalUploadUrl} className="w-full h-full border-0" title="Peer uploaded PDF solution" />
+                              <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Solution B</label>
+                                <select
+                                  value={compareBId}
+                                  onChange={(e) => setCompareBId(e.target.value)}
+                                  className="w-full text-xs rounded-xl border border-slate-200 bg-slate-50 py-2 px-3 text-slate-700 font-bold focus:outline-none dark:bg-[#0F172A] dark:border-slate-800 dark:text-slate-350"
+                                >
+                                  {answers.map(ans => (
+                                    <option key={`compB-${ans._id}`} value={ans._id}>{ans.solverName} ({ans.aiScore ?? ans.aiEvaluation?.score ?? 0}%)</option>
+                                  ))}
+                                </select>
                               </div>
-                            ) : (
-                              <p className="text-xs text-slate-655 dark:text-slate-350 leading-relaxed font-semibold whitespace-pre-wrap">
-                                {ans.content}
-                              </p>
-                            )}
-                            {ans.aiEvaluation && (
-                              <div className="bg-white/80 dark:bg-slate-900/60 p-3 rounded-xl border border-slate-100 dark:border-slate-800 space-y-1.5 text-[11px] leading-relaxed">
-                                {ans.aiEvaluation.bestConceptsCovered && ans.aiEvaluation.bestConceptsCovered.length > 0 && (
-                                  <div>
-                                    <strong className="text-slate-700 dark:text-slate-300">Best Concepts Covered: </strong>
-                                    <span className="text-slate-500 dark:text-slate-400">
-                                      {ans.aiEvaluation.bestConceptsCovered.join(', ')}
-                                    </span>
+                            </div>
+
+                            {/* Side by side comparison table */}
+                            {(() => {
+                              const ansA = answers.find(a => a._id === compareAId) || activeSelected;
+                              const ansB = answers.find(a => a._id === compareBId) || answers.find(a => a._id !== compareAId) || activeSelected;
+
+                              if (!ansA || !ansB) return null;
+
+                              return (
+                                <div className="space-y-4 divide-y divide-slate-100 dark:divide-slate-800 text-xs leading-relaxed">
+                                  
+                                  {/* Correctness */}
+                                  <div className="grid grid-cols-2 gap-6 pt-3">
+                                    <div className="space-y-1">
+                                      <span className="text-[10px] font-black uppercase text-slate-400 block">Correctness (A)</span>
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-xl font-black text-slate-800 dark:text-white">{ansA.aiScore ?? ansA.aiEvaluation?.score ?? 0}%</span>
+                                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase ${
+                                          ansA.isTeacherVerified ? 'bg-emerald-105 text-emerald-700' : 'bg-brand-50 text-brand-655'
+                                        }`}>
+                                          {ansA.isTeacherVerified ? 'Verified' : 'Peer'}
+                                        </span>
+                                      </div>
+                                    </div>
+                                    <div className="space-y-1">
+                                      <span className="text-[10px] font-black uppercase text-slate-400 block">Correctness (B)</span>
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-xl font-black text-slate-800 dark:text-white">{ansB.aiScore ?? ansB.aiEvaluation?.score ?? 0}%</span>
+                                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase ${
+                                          ansB.isTeacherVerified ? 'bg-emerald-105 text-emerald-700' : 'bg-brand-50 text-brand-655'
+                                        }`}>
+                                          {ansB.isTeacherVerified ? 'Verified' : 'Peer'}
+                                        </span>
+                                      </div>
+                                    </div>
                                   </div>
-                                )}
-                                {ans.aiEvaluation.missingConcepts && ans.aiEvaluation.missingConcepts.length > 0 && (
-                                  <div>
-                                    <strong className="text-red-500">Missing Concepts: </strong>
-                                    <span className="text-slate-500 dark:text-slate-400">
-                                      {ans.aiEvaluation.missingConcepts.join(', ')}
-                                    </span>
+
+                                  {/* Approach */}
+                                  <div className="grid grid-cols-2 gap-6 pt-3">
+                                    <div className="space-y-1.5">
+                                      <span className="text-[10px] font-black uppercase text-slate-400 block">Approach (A)</span>
+                                      {renderAnswerContent(ansA)}
+                                    </div>
+                                    <div className="space-y-1.5">
+                                      <span className="text-[10px] font-black uppercase text-slate-400 block">Approach (B)</span>
+                                      {renderAnswerContent(ansB)}
+                                    </div>
                                   </div>
-                                )}
-                                {ans.aiEvaluation.whyStrong && (
-                                  <div className="text-brand-700 dark:text-brand-400 italic">
-                                    <strong>Why this answer is strong:</strong> "{ans.aiEvaluation.whyStrong}"
+
+                                  {/* Teacher Feedback */}
+                                  <div className="grid grid-cols-2 gap-6 pt-3">
+                                    <div className="space-y-1">
+                                      <span className="text-[10px] font-black uppercase text-slate-400 block">Teacher Feedback (A)</span>
+                                      <p className="font-semibold text-slate-600 dark:text-slate-400 italic">
+                                        {ansA.teacherNote || ansA.teacherApproved ? (ansA.teacherNote || '✓ Approved by Faculty') : 'No teacher feedback.'}
+                                      </p>
+                                    </div>
+                                    <div className="space-y-1">
+                                      <span className="text-[10px] font-black uppercase text-slate-400 block">Teacher Feedback (B)</span>
+                                      <p className="font-semibold text-slate-600 dark:text-slate-400 italic">
+                                        {ansB.teacherNote || ansB.teacherApproved ? (ansB.teacherNote || '✓ Approved by Faculty') : 'No teacher feedback.'}
+                                      </p>
+                                    </div>
                                   </div>
-                                )}
-                              </div>
-                            )}
+
+                                  {/* AI Feedback */}
+                                  <div className="grid grid-cols-2 gap-6 pt-3">
+                                    <div className="space-y-1">
+                                      <span className="text-[10px] font-black uppercase text-slate-400 block">AI Feedback (A)</span>
+                                      <p className="font-semibold text-slate-600 dark:text-slate-400">
+                                        {ansA.aiEvaluation?.feedback || 'No AI feedback available.'}
+                                      </p>
+                                    </div>
+                                    <div className="space-y-1">
+                                      <span className="text-[10px] font-black uppercase text-slate-400 block">AI Feedback (B)</span>
+                                      <p className="font-semibold text-slate-600 dark:text-slate-400">
+                                        {ansB.aiEvaluation?.feedback || 'No AI feedback available.'}
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  {/* Submission Date */}
+                                  <div className="grid grid-cols-2 gap-6 pt-3 pb-3">
+                                    <div>
+                                      <span className="text-[10px] font-black uppercase text-slate-400 block">Submission Date (A)</span>
+                                      <p className="font-semibold text-slate-605 mt-1">{new Date(ansA.createdAt).toLocaleString()}</p>
+                                    </div>
+                                    <div>
+                                      <span className="text-[10px] font-black uppercase text-slate-400 block">Submission Date (B)</span>
+                                      <p className="font-semibold text-slate-605 mt-1">{new Date(ansB.createdAt).toLocaleString()}</p>
+                                    </div>
+                                  </div>
+
+                                </div>
+                              );
+                            })()}
                           </div>
-                        ))}
+                        ) : (
+                          /* SINGLE SOLUTION WORKSPACE */
+                          activeSelected && (
+                            <div className={`space-y-6 transition-opacity duration-200 ${isFading ? 'opacity-0' : 'opacity-100'}`}>
+                              
+                              {/* Metadata card */}
+                              <div className="flex justify-between items-start flex-wrap gap-4 bg-slate-50 dark:bg-slate-900/60 p-4 rounded-2xl border border-slate-100 dark:border-slate-800">
+                                <div className="flex items-center space-x-3">
+                                  <div className="h-10 w-10 rounded-full bg-brand-100 text-brand-655 flex items-center justify-center font-bold text-sm">
+                                    {(activeSelected.solverName || 'S').charAt(0)}
+                                  </div>
+                                  <div>
+                                    <h4 className="font-black text-sm text-slate-850 dark:text-slate-100">
+                                      {activeSelected.solverName}
+                                    </h4>
+                                    <p className="text-[10px] text-slate-405 font-bold uppercase tracking-wider">
+                                      Submitted on {new Date(activeSelected.createdAt).toLocaleDateString()} {new Date(activeSelected.createdAt).toLocaleTimeString()}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  {activeSelected.isTeacherVerified && (
+                                    <span className="flex items-center space-x-1 rounded-full bg-emerald-100 text-emerald-800 px-3 py-1 text-[10px] font-black uppercase dark:bg-emerald-950/20 dark:text-emerald-400">
+                                      <CheckCircle className="h-3.5 w-3.5" />
+                                      <span>Verified Solution</span>
+                                    </span>
+                                  )}
+                                  {activeSelected.isAccepted && (
+                                    <span className="flex items-center space-x-1 rounded-full bg-teal-100 text-teal-800 px-3 py-1 text-[10px] font-black uppercase dark:bg-teal-950/20 dark:text-teal-400">
+                                      <span>Asker Accepted</span>
+                                    </span>
+                                  )}
+                                  <span className="bg-brand-50 text-brand-700 px-3 py-1 rounded-full text-[10px] font-extrabold uppercase dark:bg-brand-950/20 dark:text-brand-400">
+                                    +{activeSelected.pointsAwarded ?? 0} XP
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Upvoting and score card */}
+                              <div className="flex justify-between items-center bg-white dark:bg-slate-900/40 p-4 rounded-2xl border border-slate-100 dark:border-slate-800/40 flex-wrap gap-4">
+                                <div className="flex items-center gap-3">
+                                  <div className="h-12 w-12 rounded-full border-4 border-brand-500 border-t-transparent flex items-center justify-center font-black text-brand-600 dark:text-brand-400 text-sm">
+                                    {activeSelected.aiScore ?? activeSelected.aiEvaluation?.score ?? 0}%
+                                  </div>
+                                  <div>
+                                    <span className="text-[9px] font-black uppercase text-slate-400 block tracking-wider">AI Correctness Score</span>
+                                    <span className="text-xs font-extrabold text-slate-700 dark:text-slate-350">
+                                      Verdict: {activeSelected.aiEvaluation?.verdict?.replace('_', ' ') || 'Correct'}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-3">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleHelpful(activeSelected._id)}
+                                    className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black transition-all border ${
+                                      activeSelected.upvotes?.includes(user?.id)
+                                        ? 'bg-amber-500 border-amber-500 text-white shadow-sm'
+                                        : 'bg-white text-slate-705 border-slate-200 hover:bg-slate-50 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300'
+                                    } active:scale-95`}
+                                  >
+                                    <ThumbsUp className={`h-4 w-4 ${activeSelected.upvotes?.includes(user?.id) ? 'fill-white text-amber-500' : 'text-slate-400'}`} />
+                                    <span>
+                                      {activeSelected.upvotes?.includes(user?.id) ? 'Marked Helpful' : 'Helpful?'} ({activeSelected.upvotes?.length ?? 0})
+                                    </span>
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Uploaded answer content - exactly as submitted */}
+                              <div className="space-y-2">
+                                <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Answer Content</span>
+                                {renderAnswerContent(activeSelected)}
+                              </div>
+
+                              {/* AI Critique feedback */}
+                              {activeSelected.aiEvaluation && (
+                                <div className="bg-slate-55/30 p-5 rounded-2xl border border-slate-100 dark:bg-[#0F172A]/50 dark:border-slate-800 space-y-4 text-xs">
+                                  <div className="flex items-center space-x-1.5 text-slate-800 dark:text-slate-205 font-extrabold border-b border-slate-100 dark:border-slate-800/40 pb-2">
+                                    <Brain className="h-4.5 w-4.5 text-brand-500 animate-float" />
+                                    <span>AI Grading Breakdown</span>
+                                  </div>
+
+                                  <div className="grid grid-cols-2 gap-4">
+                                    {['correctness', 'clarity', 'completeness', 'logicalThinking'].map((dim) => {
+                                      const val = activeSelected.aiEvaluation[dim] ?? 50;
+                                      return (
+                                        <div key={dim} className="space-y-1">
+                                          <div className="flex justify-between text-[10px] font-bold text-slate-400 capitalize">
+                                            <span>{dim.replace('logicalThinking', 'Logical Flow')}</span>
+                                            <span>{val}%</span>
+                                          </div>
+                                          <div className="h-1.5 w-full bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                                            <div className="h-full bg-brand-500 rounded-full" style={{ width: `${val}%` }} />
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+
+                                  <p className="text-xs text-slate-655 dark:text-slate-400 leading-relaxed italic pt-2">
+                                    <strong className="not-italic text-slate-750 dark:text-slate-300 font-bold block mb-1">Feedback Summary:</strong>
+                                    "{activeSelected.aiEvaluation.feedback}"
+                                  </p>
+
+                                  {activeSelected.aiEvaluation.bestConceptsCovered && activeSelected.aiEvaluation.bestConceptsCovered.length > 0 && (
+                                    <div className="pt-2 border-t border-slate-100 dark:border-slate-800/30">
+                                      <span className="text-[10px] font-black uppercase tracking-wider text-emerald-600 block mb-1.5">✓ Concept Mastery</span>
+                                      <div className="flex flex-wrap gap-1">
+                                        {activeSelected.aiEvaluation.bestConceptsCovered.map((c: string, i: number) => (
+                                          <span key={i} className="bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded text-[10px] font-bold dark:bg-emerald-950/20 dark:text-emerald-455 dark:border-emerald-900/30">
+                                            {c}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Student Workspace for own solution attempts */}
+                              {activeSelected.solverId?._id?.toString() === user?.id && (
+                                <div className="p-5 bg-brand-50/20 border border-brand-100 rounded-2xl dark:bg-brand-950/10 dark:border-brand-900/20 space-y-4">
+                                  <div className="flex justify-between items-center flex-wrap gap-3 pb-3 border-b border-brand-100/30">
+                                    <div>
+                                      <h4 className="text-sm font-black text-slate-855 dark:text-white">Your AI Assisted Workspace</h4>
+                                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">Manage and improve your attempts</p>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditMode('text');
+                                        setAnswerContent(activeSelected.content || '');
+                                        setInputType(activeSelected.inputType || 'text');
+                                        setOriginalUploadUrl(activeSelected.originalUploadUrl || '');
+                                      }}
+                                      className="px-3.5 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-black transition-all shadow-premium"
+                                    >
+                                      Improve Answer
+                                    </button>
+                                  </div>
+
+                                  {activeSelected.versions && activeSelected.versions.length > 0 && (
+                                    <div className="space-y-2">
+                                      <span className="text-[10px] font-black uppercase text-slate-405 tracking-wider block">Attempt History</span>
+                                      <div className="flex flex-wrap gap-2">
+                                        {activeSelected.versions.map((ver: any, index: number) => {
+                                          const isSel = activeVersionIndex === index;
+                                          return (
+                                            <button
+                                              key={index}
+                                              type="button"
+                                              onClick={() => setActiveVersionIndex(index)}
+                                              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+                                                isSel
+                                                  ? 'bg-brand-600 border-brand-600 text-white shadow-sm'
+                                                  : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300'
+                                              }`}
+                                            >
+                                              Attempt {index + 1} ({ver.aiScore || 0}%)
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Accept/Approve Actions */}
+                              <div className="flex flex-wrap gap-2.5 pt-2">
+                                {isDoubtOpen && isAsker && !activeSelected.isAccepted && (
+                                  <button
+                                    onClick={() => handleAcceptAnswer(activeSelected._id)}
+                                    className="rounded-xl border border-teal-200 hover:border-teal-300 bg-teal-50 px-4 py-2.5 text-xs font-bold text-teal-600 transition-all dark:bg-teal-955/20"
+                                  >
+                                    Accept Solution
+                                  </button>
+                                )}
+                                {isTeacher && (
+                                  <div className="flex gap-2.5 w-full">
+                                    {!activeSelected.teacherApproved ? (
+                                      <button
+                                        onClick={() => handleTeacherDecision(activeSelected._id, 'approve')}
+                                        className="rounded-xl border border-emerald-250 hover:border-emerald-350 bg-emerald-50 text-emerald-600 px-4 py-2.5 text-xs font-bold transition-all dark:bg-emerald-950/20 dark:text-emerald-400"
+                                      >
+                                        Approve Solution
+                                      </button>
+                                    ) : (
+                                      <button
+                                        onClick={() => handleTeacherDecision(activeSelected._id, 'reject')}
+                                        className="rounded-xl border border-rose-255 hover:border-rose-350 bg-rose-50 text-rose-600 px-4 py-2.5 text-xs font-bold transition-all dark:bg-rose-955/20 dark:text-rose-455"
+                                      >
+                                        Reject & Unpublish
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+
+                            </div>
+                          )
+                        )}
+
                       </div>
-                      <hr className="border-slate-105 dark:border-slate-800 my-4" />
+
                     </div>
                   );
                 })()}
 
-                {/* Regular Solutions List */}
-                <div className="space-y-6 divide-y divide-slate-100 dark:divide-slate-800">
-                  {answers.map((ans, idx) => (
-                    <div key={ans._id} className={`pt-6 ${idx === 0 ? 'pt-0' : ''} space-y-4`}>
-                      <div className="flex justify-between items-start">
-                        <div className="flex items-center space-x-2.5">
-                          <div className="h-8 w-8 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-500 font-bold text-xs dark:bg-indigo-950/20">
-                            {(ans.solverName || 'S').charAt(0)}
-                          </div>
-                          <div>
-                            <h4 className="font-extrabold text-sm text-slate-700 dark:text-slate-200">
-                              {ans.solverName}
-                              {ans.isOwnerAnswer && (
-                                <span className="ml-2 bg-indigo-50 text-indigo-650 px-2 py-0.5 rounded text-[9px] font-black uppercase dark:bg-indigo-950/40 dark:text-indigo-400">
-                                  You have also contributed an answer.
-                                </span>
-                              )}
-                            </h4>
-                            <p className="text-[10px] text-slate-400">
-                              Submitted on {new Date(ans.createdAt).toLocaleDateString()}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          {ans.isTeacherVerified && (
-                            <span className="flex items-center space-x-1 rounded-full bg-emerald-50 border border-emerald-250 px-2.5 py-0.5 text-[10px] font-extrabold text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400">
-                              <CheckCircle className="h-3 w-3 fill-emerald-55 text-white" />
-                              <span>Faculty Verified</span>
-                            </span>
-                          )}
-                          {ans.isAccepted && (
-                            <span className="flex items-center space-x-1 rounded-full bg-teal-50 px-2.5 py-0.5 text-[10px] font-extrabold text-teal-600 dark:bg-teal-950/20 dark:text-teal-400">
-                              <span>Asker Accepted</span>
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {ans.inputType === 'image' && ans.originalUploadUrl ? (
-                        <div className="rounded-2xl overflow-hidden border border-slate-100 bg-slate-50 dark:bg-slate-900 dark:border-slate-800 max-h-80 flex items-center justify-center">
-                          <img src={ans.originalUploadUrl} alt="Original peer solution image" className="max-h-80 object-contain" />
-                        </div>
-                      ) : ans.inputType === 'pdf' && ans.originalUploadUrl ? (
-                        <div className="rounded-2xl overflow-hidden border border-slate-100 bg-slate-50 dark:bg-slate-900 dark:border-slate-800 h-80">
-                          <iframe src={ans.originalUploadUrl} className="w-full h-full border-0" title="Original peer solution PDF" />
-                        </div>
-                      ) : (
-                        <p className="text-sm text-slate-650 leading-relaxed dark:text-slate-350 whitespace-pre-wrap">{ans.content}</p>
-                      )}
-
-                      {/* AI evaluation metrics */}
-                      {ans.aiEvaluation && (
-                        <div className="bg-slate-55/40 p-4 rounded-2xl border border-slate-100 dark:bg-[#0F172A]/60 dark:border-slate-800 space-y-3">
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-extrabold text-slate-750 dark:text-slate-300 flex items-center space-x-1">
-                              <Brain className="h-4 w-4 text-brand-500" />
-                              <span>AI Evaluation Score: {ans.aiEvaluation.score}/100</span>
-                            </span>
-                            <span className="text-[10px] font-bold text-slate-400">XP Earned: +{ans.pointsAwarded}</span>
-                          </div>
-
-                          {/* Visual score bars */}
-                          <div className="grid grid-cols-2 gap-x-6 gap-y-2">
-                            <div className="space-y-1">
-                              <div className="flex justify-between text-[10px] font-bold text-slate-400">
-                                <span>Correctness</span>
-                                <span>{ans.aiEvaluation.correctness}%</span>
-                              </div>
-                              <div className="h-1.5 w-full bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
-                                <div className="h-full bg-emerald-450 rounded-full" style={{ width: `${ans.aiEvaluation.correctness}%`, backgroundColor: '#10b981' }} />
-                              </div>
-                            </div>
-                            <div className="space-y-1">
-                              <div className="flex justify-between text-[10px] font-bold text-slate-400">
-                                <span>Clarity</span>
-                                <span>{ans.aiEvaluation.clarity}%</span>
-                              </div>
-                              <div className="h-1.5 w-full bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
-                                <div className="h-full bg-brand-500 rounded-full" style={{ width: `${ans.aiEvaluation.clarity}%` }} />
-                              </div>
-                            </div>
-                          </div>
-
-                          <p className="text-xs italic text-slate-500 leading-relaxed dark:text-slate-400">
-                            <span className="font-bold not-italic text-slate-650 dark:text-slate-300">Feedback:</span> {ans.aiEvaluation.feedback}
-                          </p>
-                        </div>
-                      )}
-
-                      {/* Action buttons (accept, verify, approve, reject) */}
-                      <div className="flex flex-wrap gap-2 pt-2">
-                        {isDoubtOpen && isAsker && !ans.isAccepted && (
-                          <button
-                            onClick={() => handleAcceptAnswer(ans._id)}
-                            className="rounded-xl border border-teal-200 hover:border-teal-300 bg-teal-50 px-4 py-2 text-xs font-bold text-teal-600 transition-all dark:bg-teal-950/20"
-                          >
-                            Accept Solution
-                          </button>
-                        )}
-                        {isTeacher && (
-                          <div className="flex gap-2 w-full">
-                            {!ans.teacherApproved ? (
-                              <button
-                                onClick={() => handleTeacherDecision(ans._id, 'approve')}
-                                className="rounded-xl border border-emerald-250 hover:border-emerald-350 bg-emerald-50 text-emerald-600 px-4 py-2 text-xs font-bold transition-all dark:bg-emerald-950/20 dark:text-emerald-400"
-                              >
-                                Approve Solution
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => handleTeacherDecision(ans._id, 'reject')}
-                                className="rounded-xl border border-rose-255 hover:border-rose-350 bg-rose-50 text-rose-600 px-4 py-2 text-xs font-bold transition-all dark:bg-rose-955/20 dark:text-rose-450"
-                              >
-                                Reject & Unpublish
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Solution Attempt History for Teacher (Feature 8 & 10) */}
-                      {isTeacher && ans.versions && ans.versions.length > 0 && (
-                        <div className="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-2xl border border-slate-100 dark:border-slate-800/40 space-y-2 text-xs">
-                          <strong className="text-slate-700 dark:text-slate-350 block uppercase text-[10px] tracking-wider font-extrabold">Solution Attempt History ({ans.versions.length} attempts)</strong>
-                          <div className="space-y-3 divide-y divide-slate-150 dark:divide-slate-800/40">
-                            {ans.versions.map((ver: any, index: number) => (
-                              <div key={index} className="pt-3 first:pt-0 space-y-2">
-                                <div className="flex justify-between items-center text-[10px] font-extrabold">
-                                  <span className="text-brand-600 dark:text-brand-400 font-black">Attempt {index + 1}</span>
-                                  <span className="text-slate-400">{new Date(ver.createdAt).toLocaleDateString()}</span>
-                                  <span className="bg-brand-50 dark:bg-brand-950/20 text-brand-700 dark:text-brand-400 px-2 py-0.5 rounded font-black">AI Score: {ver.aiScore || 0}%</span>
-                                </div>
-                                <div className="space-y-1">
-                                  <span className="text-[9px] font-black uppercase text-slate-400">Content / File:</span>
-                                  {ver.inputType === 'image' && ver.originalUploadUrl ? (
-                                    <div className="rounded-xl overflow-hidden border max-h-40 flex items-center justify-center bg-white dark:bg-slate-850">
-                                      <img src={ver.originalUploadUrl} className="max-h-40 object-contain" alt="Attempt attachment" />
-                                    </div>
-                                  ) : ver.inputType === 'pdf' && ver.originalUploadUrl ? (
-                                    <div className="rounded-xl overflow-hidden border h-40 bg-white dark:bg-slate-850">
-                                      <iframe src={ver.originalUploadUrl} className="w-full h-full border-0" title="Attempt PDF attachment" />
-                                    </div>
-                                  ) : (
-                                    <p className="text-[11px] text-slate-650 dark:text-slate-400 leading-relaxed font-semibold whitespace-pre-wrap">{ver.content}</p>
-                                  )}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
               </div>
             )}
           </div>
 
-          {/* Answer Editor Form & AI Review Workspace (Student Only) */}
-          {user?.role === 'student' && myAnswer && editMode === 'none' && (
-            <div className="rounded-3xl border border-slate-100 bg-white p-6 shadow-premium dark:bg-[#1E293B] dark:border-slate-800 transition-colors duration-300 space-y-6">
-              {/* Header & Publish Status */}
-              <div className="flex justify-between items-center pb-3 border-b border-slate-100 dark:border-slate-800 flex-wrap gap-3">
-                <div>
-                  <h3 className="text-base font-black text-slate-850 dark:text-slate-100">Your AI Assisted Workspace</h3>
-                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Review, improve, and track solutions</span>
-                </div>
-
-                {/* Color-coded Publish Status badge (Feature 11) */}
-                {(() => {
-                  const score = selectedVersion?.aiScore || 0;
-                  const isPublished = myAnswer.isTeacherVerified || myAnswer.isPublished || myAnswer.teacherApproved || score >= 50;
-                  if (score === 100 || myAnswer.isTeacherVerified) {
-                    return (
-                      <span className="flex items-center space-x-1 px-3 py-1 bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-900/60 rounded-full text-xs font-black uppercase">
-                        <CheckCircle className="h-3.5 w-3.5 animate-pulse text-emerald-500" />
-                        <span>Mastered</span>
-                      </span>
-                    );
-                  } else if (isPublished) {
-                    return (
-                      <span className="flex items-center space-x-1 px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-450 dark:border-emerald-900/40 rounded-full text-xs font-black uppercase">
-                        <CheckCircle className="h-3.5 w-3.5 animate-pulse" />
-                        <span>Published</span>
-                      </span>
-                    );
-                  } else if (score >= 40) {
-                    return (
-                      <span className="flex items-center space-x-1 px-3 py-1 bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/20 dark:text-amber-450 dark:border-amber-900/40 rounded-full text-xs font-black uppercase">
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        <span>Almost Ready</span>
-                      </span>
-                    );
-                  } else {
-                    return (
-                      <span className="flex items-center space-x-1 px-3 py-1 bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-955/20 dark:text-rose-455 dark:border-rose-900/40 rounded-full text-xs font-black uppercase">
-                        <AlertTriangle className="h-3.5 w-3.5 animate-bounce" />
-                        <span>Needs Improvement</span>
-                      </span>
-                    );
-                  }
-                })()}
-              </div>
-
-              {/* Attempt History Section */}
-              <div className="space-y-3 bg-slate-50 dark:bg-slate-900/40 p-4 rounded-2xl border border-slate-100 dark:border-slate-850">
-                <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Submission & Improvement History</span>
-                <div className="flex flex-wrap gap-2">
-                  {myAnswer.versions && myAnswer.versions.map((ver: any, index: number) => {
-                    const score = ver.aiScore || ver.aiEvaluation?.score || 0;
-                    const isSelected = activeVersionIndex === index;
-                    return (
-                      <button
-                        key={index}
-                        onClick={() => setActiveVersionIndex(index)}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-1 border ${
-                          isSelected 
-                            ? 'bg-brand-600 border-brand-600 text-white shadow-sm'
-                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700'
-                        }`}
-                      >
-                        <span>Attempt {index + 1}</span>
-                        <span className="font-extrabold">({score}%)</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Publishing rules message */}
-              <div className={`p-4 rounded-2xl text-xs font-semibold leading-relaxed border ${
-                (selectedVersion?.aiScore || 0) === 100
-                  ? 'bg-emerald-100/30 text-emerald-800 border-emerald-200 dark:bg-emerald-955/10 dark:text-emerald-400 dark:border-emerald-900/40'
-                  : (selectedVersion?.aiScore || 0) >= 50 || myAnswer.teacherApproved
-                  ? 'bg-emerald-50/40 text-emerald-800 border-emerald-100/50 dark:bg-emerald-950/10 dark:text-emerald-450'
-                  : 'bg-rose-50/40 text-rose-800 border-rose-100/50 dark:bg-rose-955/10 dark:text-rose-400'
-              }`}>
-                {(selectedVersion?.aiScore || 0) === 100
-                  ? 'Excellent! You have mastered this question.'
-                  : (selectedVersion?.aiScore || 0) >= 50 || myAnswer.teacherApproved
-                  ? 'Your answer has been successfully published.'
-                  : 'Your answer needs improvement before it can be shared with other students.'}
-              </div>
-              {/* Original Uploaded File Display (Feature 6) */}
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Your Submitted Answer format</span>
-                  <span className="text-[10px] text-slate-400 font-bold">
-                    Attempt #{selectedVersion?.attemptNumber || (activeVersionIndex + 1)} submitted {selectedVersion?.createdAt ? new Date(selectedVersion.createdAt).toLocaleString() : ''}
-                  </span>
-                </div>
-                {selectedVersion?.inputType === 'image' && selectedVersion?.originalUploadUrl ? (
-                  <div className="rounded-2xl overflow-hidden border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 max-h-60 flex items-center justify-center">
-                    <img src={selectedVersion.originalUploadUrl} alt="My uploaded answer" className="max-h-60 object-contain" />
-                  </div>
-                ) : selectedVersion?.inputType === 'pdf' && selectedVersion?.originalUploadUrl ? (
-                  <div className="rounded-2xl overflow-hidden border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 h-60">
-                    <iframe src={selectedVersion.originalUploadUrl} className="w-full h-full border-0" title="My uploaded PDF answer" />
-                  </div>
-                ) : (
-                  <div className="bg-slate-50 dark:bg-[#0F172A] p-4 rounded-2xl border border-slate-100 dark:border-slate-800/40 max-h-60 overflow-y-auto">
-                    <p className="text-xs text-slate-700 dark:text-slate-300 font-semibold whitespace-pre-wrap">{selectedVersion?.content}</p>
-                  </div>
-                )}
-              </div>
-
-              {selectedVersion?.teacherNote && (
-                <div className="p-3 bg-brand-50 border border-brand-100 rounded-2xl text-xs text-brand-700 dark:bg-brand-950/20 dark:text-brand-400 dark:border-brand-900/30">
-                  <strong>Teacher Feedback:</strong> {selectedVersion.teacherNote}
-                </div>
-              )}
-
-              {/* AI Evaluation Card */}
-              {selectedVersion?.aiEvaluation && (
-                <div className="bg-slate-55/40 p-5 rounded-2xl border border-slate-100 dark:bg-[#0F172A]/60 dark:border-slate-800 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-black text-slate-800 dark:text-slate-200 flex items-center space-x-1">
-                      <Brain className="h-4.5 w-4.5 text-brand-500 animate-pulse" />
-                      <span>AI Grading: {selectedVersion.aiScore || 0}% score</span>
-                    </span>
-                  </div>
-
-                  {/* Dimension bars */}
-                  <div className="grid grid-cols-2 gap-4">
-                    {['correctness', 'clarity', 'completeness', 'logicalThinking'].map((dim) => {
-                      const val = selectedVersion.aiEvaluation[dim] || 50;
-                      return (
-                        <div key={dim} className="space-y-1">
-                          <div className="flex justify-between text-[10px] font-bold text-slate-400 capitalize">
-                            <span>{dim.replace('logicalThinking', 'Logical Flow')}</span>
-                            <span>{val}%</span>
-                          </div>
-                          <div className="h-1.5 w-full bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
-                            <div className="h-full bg-brand-500 rounded-full" style={{ width: `${val}%` }} />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed italic">
-                    <strong className="not-italic text-slate-750 dark:text-slate-300">Critique:</strong> "{selectedVersion.aiEvaluation.feedback}"
-                  </p>
-
-                  {/* Weaknesses / Mistakes (prefixed with ❌) */}
-                  {selectedVersion.aiEvaluation.weaknesses && selectedVersion.aiEvaluation.weaknesses.length > 0 && (
-                    <div className="space-y-1.5 pt-2 border-t border-slate-100 dark:border-slate-800/40">
-                      <span className="text-[10px] font-black uppercase tracking-wider text-rose-500 block">❌ Critical Mistakes</span>
-                      <ul className="space-y-1">
-                        {selectedVersion.aiEvaluation.weaknesses.map((w: string, idx: number) => (
-                          <li key={idx} className="text-xs text-rose-600 dark:text-rose-450 font-bold">
-                            {w}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {/* Suggestions to Improve (prefixed with ✓) */}
-                  {selectedVersion.aiEvaluation.suggestions && selectedVersion.aiEvaluation.suggestions.length > 0 && (
-                    <div className="space-y-1.5 pt-2 border-t border-slate-100 dark:border-slate-800/40">
-                      <span className="text-[10px] font-black uppercase tracking-wider text-emerald-500 block">✓ Required Action Improvements</span>
-                      <ul className="space-y-1">
-                        {selectedVersion.aiEvaluation.suggestions.map((s: string, idx: number) => (
-                          <li key={idx} className="text-xs text-emerald-650 dark:text-emerald-450 font-bold">
-                            {s}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              )}
-                  {/* Action Buttons to Edit or Re-upload */}
-              <div className="flex gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
-                {(!myAnswer || (selectedVersion?.aiScore || 0) < 100) ? (
-                  <>
-                    <button
-                      disabled={!doubt.allowAnswerEditing}
-                      onClick={() => {
-                        setEditMode('text');
-                        setAnswerContent(selectedVersion?.content || '');
-                        setInputType(selectedVersion?.inputType || 'text');
-                        setOriginalUploadUrl(selectedVersion?.originalUploadUrl || '');
-                      }}
-                      className="px-4 py-2 bg-slate-100 hover:bg-slate-205 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-705 dark:text-slate-200 rounded-xl text-xs font-bold transition-all border border-slate-200 dark:border-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Edit Answer
-                    </button>
-                    <button
-                      disabled={!doubt.allowAnswerEditing}
-                      onClick={() => {
-                        setEditMode('text');
-                        setAnswerContent(selectedVersion?.content || '');
-                        setInputType(selectedVersion?.inputType || 'text');
-                        setOriginalUploadUrl(selectedVersion?.originalUploadUrl || '');
-                        handleSubmitAnswer(null as any);
-                      }}
-                      className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold transition-all shadow-premium disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Submit Improved Answer
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    onClick={() => {
-                      setEditMode('text');
-                      setAnswerContent(''); // Clear to start a fresh alternate solution
-                      setOriginalUploadUrl('');
-                      setInputType('text');
-                    }}
-                    className="px-4 py-2 bg-brand-50 hover:bg-brand-100 text-brand-650 rounded-xl text-xs font-bold transition-all dark:bg-brand-950/20 dark:text-brand-400"
-                  >
-                    Submit Another Solution
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-
+          {/* Form Workspace for Student Solution Contribution */}
           {user?.role === 'student' && (!myAnswer || editMode !== 'none') && (
             <form onSubmit={handleSubmitAnswer} className="rounded-3xl border border-slate-100 bg-white p-6 shadow-premium dark:bg-[#1E293B] dark:border-slate-800 transition-colors duration-300 space-y-4">
               <div className="flex justify-between items-center pb-2 border-b border-slate-100 dark:border-slate-800">
@@ -1046,7 +1259,7 @@ export const DoubtDetail: React.FC = () => {
               </div>
 
               {inputType !== 'text' && !originalUploadUrl && (
-                <div className="border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl p-6 text-center hover:border-brand-500 transition-colors duration-300">
+                <div className="border-2 border-dashed border-slate-200 dark:border-slate-805 rounded-2xl p-6 text-center hover:border-brand-500 transition-colors duration-300">
                   <input
                     type="file"
                     id="file-upload"
@@ -1075,7 +1288,6 @@ export const DoubtDetail: React.FC = () => {
                 </div>
               )}
 
-              {/* Feature 5 & 6 editor form displays */}
               {inputType === 'text' ? (
                 <div className="space-y-2">
                   <textarea
@@ -1123,7 +1335,7 @@ export const DoubtDetail: React.FC = () => {
 
               {submitError && (
                 <div className="bg-rose-50/50 dark:bg-rose-955/10 border border-rose-100 dark:border-rose-900/30 p-5 rounded-2xl space-y-3">
-                  <div className="flex items-center space-x-2 text-rose-600 dark:text-rose-450 text-xs font-bold animate-pulse">
+                  <div className="flex items-center space-x-2 text-rose-600 dark:text-rose-455 text-xs font-bold animate-pulse">
                     <AlertTriangle className="h-4.5 w-4.5" />
                     <span>AI Service Busy</span>
                   </div>
@@ -1137,7 +1349,7 @@ export const DoubtDetail: React.FC = () => {
                     onClick={() => handleSubmitAnswer(null as any)}
                     className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold shadow transition-all"
                   >
-                    <RefreshCw className="h-3 w-3 animate-spin-slow" />
+                    <RefreshCw className="h-3 w-3" />
                     <span>Retry Solution Scoring</span>
                   </button>
                 </div>
@@ -1157,7 +1369,7 @@ export const DoubtDetail: React.FC = () => {
                       <span>Concept Question: {fallbackData.question}</span>
                       <span className="text-brand-650">Score: {fallbackData.score}%</span>
                     </div>
-                    <p className="text-xs font-semibold text-slate-650 dark:text-slate-350 italic">
+                    <p className="text-xs font-semibold text-slate-655 dark:text-slate-350 italic">
                       "{fallbackData.answer}"
                     </p>
                   </div>
@@ -1227,10 +1439,12 @@ export const DoubtDetail: React.FC = () => {
               </div>
             </form>
           )}
+
         </div>
 
-        {/* Right Columns (AI Learning Assistant & Teacher Settings Panels) */}
-        <div className="space-y-6">
+        {/* Right Columns (AI Learning Assistant & Teacher Settings - 30% width on Desktop, sticky) */}
+        <div className="col-span-1 lg:col-span-3 space-y-6 lg:sticky lg:top-6 self-start">
+          
           {/* Teacher Settings Panel (Visible only to Teachers) */}
           {isTeacher && (
             <div className="rounded-3xl border border-slate-100 bg-white p-6 shadow-premium dark:bg-[#1E293B] dark:border-slate-800 transition-colors duration-300 space-y-4">

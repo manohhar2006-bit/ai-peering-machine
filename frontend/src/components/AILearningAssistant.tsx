@@ -843,26 +843,26 @@ export const AILearningAssistant: React.FC<AILearningAssistantProps> = ({
 
         {/* ── COACH TAB ───────────────────────────────────────────────────────── */}
         {activeTab === 'coach' && (
-          <div className="flex flex-col" style={{ height: '500px' }}>
+          <div className="flex flex-col space-y-4" style={{ height: '650px' }}>
             {/* Hint Tracker Progress Indicator */}
-            <div className="flex items-center justify-between mb-3 flex-shrink-0">
-              <div className="flex items-center space-x-2">
-                <div className="h-6 w-6 rounded-lg bg-amber-50 flex items-center justify-center dark:bg-amber-955/20">
-                  <GraduationCap className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+            <div className="flex items-center justify-between pb-3 border-b border-slate-105 dark:border-slate-800 flex-shrink-0">
+              <div className="flex items-center space-x-2.5">
+                <div className="h-7 w-7 rounded-lg bg-amber-50 flex items-center justify-center dark:bg-amber-955/20">
+                  <GraduationCap className="h-4 w-4 text-amber-600 dark:text-amber-450" />
                 </div>
                 <div>
-                  <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-505 dark:text-slate-400">Hint Progression</p>
-                  <div className="flex items-center gap-1.5 text-[10px] text-slate-705 dark:text-slate-350 font-extrabold mt-0.5">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Hint Progression Ladder</p>
+                  <div className="flex items-center gap-2 text-[10px] text-slate-700 dark:text-slate-350 font-extrabold mt-0.5">
                     <span className="flex items-center gap-1">
                       <span>Hint 1</span>
                       <span>{isHint1Revealed ? '✅' : '🔓'}</span>
                     </span>
-                    <span className="text-slate-400">/</span>
+                    <span className="text-slate-300 dark:text-slate-700">|</span>
                     <span className="flex items-center gap-1">
                       <span>Hint 2</span>
                       <span>{isHint2Revealed ? '✅' : isHint1Revealed ? '🔓' : '🔒'}</span>
                     </span>
-                    <span className="text-slate-400">/</span>
+                    <span className="text-slate-300 dark:text-slate-700">|</span>
                     <span className="flex items-center gap-1">
                       <span>Hint 3</span>
                       <span>{isHint3Revealed ? '✅' : isHint2Revealed ? '🔓' : '🔒'}</span>
@@ -870,34 +870,33 @@ export const AILearningAssistant: React.FC<AILearningAssistantProps> = ({
                   </div>
                 </div>
               </div>
-
             </div>
 
             {/* Message Viewport */}
-            <div className="flex-1 overflow-y-auto rounded-2xl border border-slate-105 dark:border-slate-800 bg-slate-50 dark:bg-[#0F172A] p-3 space-y-3 mb-2" style={{ minHeight: 0 }}>
+            <div className="flex-1 overflow-y-auto rounded-2xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-[#0F172A] p-4 space-y-5 mb-1 scrollbar-thin" style={{ minHeight: 0 }}>
               {chatMessages.map((msg, idx) => (
                 <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   {msg.role === 'coach' && (
-                    <div className="flex-shrink-0 mr-2 mt-1">
-                      <div className="h-6 w-6 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-sm">
-                        <Sparkles className="h-3 w-3 text-white" />
+                    <div className="flex-shrink-0 mr-3 mt-1">
+                      <div className="h-7 w-7 rounded-full bg-gradient-to-br from-amber-400 to-orange-550 flex items-center justify-center shadow-sm">
+                        <Sparkles className="h-3.5 w-3.5 text-white" />
                       </div>
                     </div>
                   )}
                   <div className="max-w-[85%]">
                     {msg.role === 'user' ? (
-                      <div className="bg-brand-600 text-white rounded-2xl rounded-br-md px-3 py-2 shadow-sm text-xs">
+                      <div className="bg-brand-600 text-white rounded-2xl rounded-br-md px-4 py-2.5 shadow-sm text-xs leading-relaxed font-semibold">
                         <p className="whitespace-pre-wrap">{msg.content}</p>
                       </div>
                     ) : msg.data?.isFeedbackSelection ? (
-                      <div className="border-l-4 border-indigo-505 bg-indigo-505/5 text-slate-705 dark:text-slate-350 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm space-y-3 text-xs">
-                        <p className="font-bold leading-normal">{msg.content}</p>
+                      <div className="border-l-4 border-indigo-500 bg-indigo-50/40 dark:bg-indigo-950/10 text-slate-700 dark:text-slate-300 rounded-2xl rounded-bl-md px-4 py-3.5 shadow-sm space-y-3.5 text-xs">
+                        <p className="font-extrabold leading-relaxed">{msg.content}</p>
                         <div className="grid grid-cols-2 gap-2 pt-1">
                           <button
                             type="button"
                             onClick={() => handleSendFollowUp('Review Mistakes')}
                             disabled={chatLoading}
-                            className="py-1.5 px-2 rounded-xl bg-white border border-indigo-205 text-indigo-605 hover:bg-indigo-50 dark:bg-slate-800 dark:border-slate-700 dark:text-indigo-400 font-extrabold text-[10px] transition-all text-center active:scale-95 disabled:opacity-50"
+                            className="py-2 px-2.5 rounded-xl bg-white border border-indigo-150 text-indigo-600 hover:bg-indigo-50 dark:bg-slate-800 dark:border-slate-700 dark:text-indigo-400 font-extrabold text-[10px] transition-all text-center active:scale-95 disabled:opacity-50"
                           >
                             🔍 Review Mistakes
                           </button>
@@ -905,7 +904,7 @@ export const AILearningAssistant: React.FC<AILearningAssistantProps> = ({
                             type="button"
                             onClick={() => handleSendFollowUp('Give Improvement Tips')}
                             disabled={chatLoading}
-                            className="py-1.5 px-2 rounded-xl bg-white border border-indigo-205 text-indigo-605 hover:bg-indigo-50 dark:bg-slate-800 dark:border-slate-700 dark:text-indigo-400 font-extrabold text-[10px] transition-all text-center active:scale-95 disabled:opacity-50"
+                            className="py-2 px-2.5 rounded-xl bg-white border border-indigo-150 text-indigo-600 hover:bg-indigo-50 dark:bg-slate-800 dark:border-slate-700 dark:text-indigo-400 font-extrabold text-[10px] transition-all text-center active:scale-95 disabled:opacity-50"
                           >
                             💡 Give Improvement Tips
                           </button>
@@ -913,7 +912,7 @@ export const AILearningAssistant: React.FC<AILearningAssistantProps> = ({
                             type="button"
                             onClick={() => handleSendFollowUp('Explain Missing Concepts')}
                             disabled={chatLoading}
-                            className="py-1.5 px-2 rounded-xl bg-white border border-indigo-205 text-indigo-605 hover:bg-indigo-50 dark:bg-slate-800 dark:border-slate-700 dark:text-indigo-400 font-extrabold text-[10px] transition-all text-center active:scale-95 disabled:opacity-50"
+                            className="py-2 px-2.5 rounded-xl bg-white border border-indigo-150 text-indigo-600 hover:bg-indigo-50 dark:bg-slate-800 dark:border-slate-700 dark:text-indigo-400 font-extrabold text-[10px] transition-all text-center active:scale-95 disabled:opacity-50"
                           >
                             📚 Explain Missing Concepts
                           </button>
@@ -929,42 +928,42 @@ export const AILearningAssistant: React.FC<AILearningAssistantProps> = ({
                               }
                             }}
                             disabled={chatLoading || (isHint1Revealed && isHint2Revealed && isHint3Revealed)}
-                            className="py-1.5 px-2 rounded-xl bg-white border border-indigo-205 text-indigo-655 hover:bg-indigo-50 dark:bg-slate-800 dark:border-slate-700 dark:text-indigo-400 font-extrabold text-[10px] transition-all text-center active:scale-95 disabled:opacity-50"
+                            className="py-2 px-2.5 rounded-xl bg-white border border-indigo-150 text-indigo-600 hover:bg-indigo-50 dark:bg-slate-800 dark:border-slate-700 dark:text-indigo-400 font-extrabold text-[10px] transition-all text-center active:scale-95 disabled:opacity-50"
                           >
                             💡 Generate Hint
                           </button>
                         </div>
                       </div>
                     ) : (
-                      <div className={`rounded-2xl rounded-bl-md px-3 py-2.5 shadow-sm text-xs border ${
+                      <div className={`rounded-2xl rounded-bl-md px-4 py-3 shadow-sm text-xs border leading-relaxed ${
                         msg.level
-                          ? 'bg-amber-50 border-amber-100 dark:bg-amber-955/20 dark:border-amber-800/40 text-slate-705 dark:text-slate-300'
-                          : 'bg-white border border-slate-205 dark:bg-[#1E293B] dark:border-slate-700 text-slate-705 dark:text-slate-300'
+                          ? 'bg-amber-50/60 border-amber-100 dark:bg-amber-955/15 dark:border-amber-900/40 text-slate-705 dark:text-slate-300'
+                          : 'bg-white border-slate-200 dark:bg-[#1E293B] dark:border-slate-800 text-slate-705 dark:text-slate-300'
                       }`}>
                         {msg.label && (
-                          <div className="flex items-center space-x-1 mb-1.5">
+                          <div className="flex items-center space-x-1.5 mb-1.5">
                             {msg.level ? (
-                              <span className={`inline-flex items-center space-x-1 text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded-full ${
-                                msg.level <= 1 ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400'
-                                : msg.level <= 2 ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400'
-                                : 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-450'
+                              <span className={`inline-flex items-center space-x-1 text-[9px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                                msg.level <= 1 ? 'bg-amber-100 text-amber-705 dark:bg-amber-900/40 dark:text-amber-400'
+                                : msg.level <= 2 ? 'bg-orange-105 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400'
+                                : 'bg-rose-105 text-rose-700 dark:bg-rose-900/40 dark:text-rose-450'
                               }`}>
                                 <Lightbulb className="h-2.5 w-2.5" />
                                 <span>{msg.label}</span>
                               </span>
                             ) : (
-                              <span className="text-[9px] font-bold text-slate-405 uppercase tracking-wider">{msg.label}</span>
+                              <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider">{msg.label}</span>
                             )}
                           </div>
                         )}
-                        <p className="leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                        <p className="whitespace-pre-wrap">{msg.content}</p>
                       </div>
                     )}
                   </div>
                   {msg.role === 'user' && (
-                    <div className="flex-shrink-0 ml-2 mt-1">
-                      <div className="h-6 w-6 rounded-full bg-brand-600 flex items-center justify-center shadow-sm">
-                        <MessageCircle className="h-3 w-3 text-white" />
+                    <div className="flex-shrink-0 ml-3 mt-1">
+                      <div className="h-7 w-7 rounded-full bg-brand-600 flex items-center justify-center shadow-sm">
+                        <MessageCircle className="h-3.5 w-3.5 text-white" />
                       </div>
                     </div>
                   )}
@@ -972,13 +971,13 @@ export const AILearningAssistant: React.FC<AILearningAssistantProps> = ({
               ))}
               {chatLoading && (
                 <div className="flex justify-start">
-                  <div className="flex-shrink-0 mr-2 mt-1">
-                    <div className="h-6 w-6 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-sm">
-                      <Sparkles className="h-3 w-3 text-white" />
+                  <div className="flex-shrink-0 mr-3 mt-1">
+                    <div className="h-7 w-7 rounded-full bg-gradient-to-br from-amber-400 to-orange-550 flex items-center justify-center shadow-sm">
+                      <Sparkles className="h-3.5 w-3.5 text-white" />
                     </div>
                   </div>
-                  <div className="bg-white dark:bg-[#1E293B] border border-slate-205 dark:border-slate-700 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm space-y-1">
-                    <span className="text-[10px] text-slate-400 font-bold">AI is thinking...</span>
+              <div className="bg-white dark:bg-[#1E293B] border border-slate-200 dark:border-slate-800 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm space-y-1">
+                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">AI is thinking...</span>
                     <div className="flex space-x-1 items-center">
                       <div className="h-1.5 w-1.5 bg-amber-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                       <div className="h-1.5 w-1.5 bg-amber-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
@@ -991,7 +990,7 @@ export const AILearningAssistant: React.FC<AILearningAssistantProps> = ({
             </div>
 
             {/* Clickable Quick Command Chips */}
-            <div className="flex flex-wrap gap-1 mb-2 flex-shrink-0">
+            <div className="flex flex-wrap gap-1.5 mb-1 flex-shrink-0">
               <button
                 type="button"
                 onClick={() => handleSendFollowUp('Hint 1')}
@@ -999,7 +998,7 @@ export const AILearningAssistant: React.FC<AILearningAssistantProps> = ({
                 className={`px-2 py-1 rounded-lg border text-[9px] font-extrabold uppercase transition-all shadow-sm ${
                   isHint1Revealed
                     ? "bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed dark:bg-slate-800 dark:border-slate-700"
-                    : "bg-amber-50 border-amber-205 text-amber-655 hover:bg-amber-100 dark:bg-amber-955/20 dark:border-amber-800/40 dark:text-amber-400 active:scale-95"
+                    : "bg-amber-50 border-amber-205 text-amber-600 hover:bg-amber-100 dark:bg-amber-955/20 dark:border-amber-800/40 dark:text-amber-400 active:scale-95"
                 }`}
               >
                 💡 Hint 1
@@ -1016,8 +1015,8 @@ export const AILearningAssistant: React.FC<AILearningAssistantProps> = ({
                 disabled={chatLoading || isHint2Revealed || !isHint1Revealed}
                 className={`px-2 py-1 rounded-lg border text-[9px] font-extrabold uppercase transition-all shadow-sm ${
                   isHint2Revealed || !isHint1Revealed
-                    ? "bg-slate-100 border-slate-205 text-slate-400 cursor-not-allowed dark:bg-slate-800 dark:border-slate-700"
-                    : "bg-amber-50 border-amber-205 text-amber-655 hover:bg-amber-100 dark:bg-amber-955/20 dark:border-amber-800/40 dark:text-amber-400 active:scale-95"
+                    ? "bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed dark:bg-slate-800 dark:border-slate-700"
+                    : "bg-amber-50 border-amber-205 text-amber-600 hover:bg-amber-100 dark:bg-amber-955/20 dark:border-amber-800/40 dark:text-amber-400 active:scale-95"
                 }`}
               >
                 {isHint1Revealed ? '💡 Hint 2' : '🔒 Hint 2'}
@@ -1034,8 +1033,8 @@ export const AILearningAssistant: React.FC<AILearningAssistantProps> = ({
                 disabled={chatLoading || isHint3Revealed || !isHint2Revealed}
                 className={`px-2 py-1 rounded-lg border text-[9px] font-extrabold uppercase transition-all shadow-sm ${
                   isHint3Revealed || !isHint2Revealed
-                    ? "bg-slate-100 border-slate-205 text-slate-405 cursor-not-allowed dark:bg-slate-800 dark:border-slate-700"
-                    : "bg-amber-50 border-amber-205 text-amber-655 hover:bg-amber-100 dark:bg-amber-955/20 dark:border-amber-800/40 dark:text-amber-400 active:scale-95"
+                    ? "bg-slate-100 border-slate-205 text-slate-400 cursor-not-allowed dark:bg-slate-800 dark:border-slate-700"
+                    : "bg-amber-50 border-amber-205 text-amber-600 hover:bg-amber-100 dark:bg-amber-955/20 dark:border-amber-800/40 dark:text-amber-400 active:scale-95"
                 }`}
               >
                 {isHint2Revealed ? '💡 Hint 3' : '🔒 Hint 3'}
@@ -1044,7 +1043,7 @@ export const AILearningAssistant: React.FC<AILearningAssistantProps> = ({
                 type="button"
                 onClick={() => handleSendFollowUp('Explain Concept')}
                 disabled={chatLoading}
-                className="px-2 py-1 rounded-lg border bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-100 dark:bg-blue-955/20 dark:border-blue-800/40 dark:text-blue-400 text-[9px] font-extrabold uppercase transition-all shadow-sm active:scale-95"
+                className="px-2 py-1 rounded-lg border bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-105 dark:bg-blue-955/20 dark:border-blue-800/40 dark:text-blue-400 text-[9px] font-extrabold uppercase transition-all shadow-sm active:scale-95"
               >
                 📚 Explain Concept
               </button>
@@ -1052,7 +1051,7 @@ export const AILearningAssistant: React.FC<AILearningAssistantProps> = ({
                 type="button"
                 onClick={() => handleSendFollowUp('Where is my mistake?')}
                 disabled={chatLoading}
-                className="px-2 py-1 rounded-lg border bg-rose-50 border-rose-200 text-rose-600 hover:bg-rose-100 dark:bg-rose-955/20 dark:border-rose-800/40 dark:text-rose-400 text-[9px] font-extrabold uppercase transition-all shadow-sm active:scale-95"
+                className="px-2 py-1 rounded-lg border bg-rose-50 border-rose-200 text-rose-605 hover:bg-rose-105 dark:bg-rose-955/20 dark:border-rose-800/40 dark:text-rose-455 text-[9px] font-extrabold uppercase transition-all shadow-sm active:scale-95"
               >
                 🔍 Where is my mistake?
               </button>
@@ -1060,31 +1059,31 @@ export const AILearningAssistant: React.FC<AILearningAssistantProps> = ({
                 type="button"
                 onClick={() => handleSendFollowUp('Guide me')}
                 disabled={chatLoading}
-                className="px-2 py-1 rounded-lg border bg-emerald-50 border-emerald-200 text-emerald-600 hover:bg-emerald-100 dark:bg-emerald-955/20 dark:border-emerald-800/40 dark:text-emerald-400 text-[9px] font-extrabold uppercase transition-all shadow-sm active:scale-95"
+                className="px-2 py-1 rounded-lg border bg-emerald-50 border-emerald-205 text-emerald-600 hover:bg-emerald-105 dark:bg-emerald-955/20 dark:border-emerald-800/40 dark:text-emerald-450 text-[9px] font-extrabold uppercase transition-all shadow-sm active:scale-95"
               >
                 🤖 Guide me
               </button>
             </div>
 
-            {/* Input Area */}
+            {/* Input Area with enlarged size */}
             <div className="flex-shrink-0">
-              <div className="flex items-center space-x-2 bg-white dark:bg-[#0F172A] border border-slate-205 dark:border-slate-700 rounded-xl px-2 py-1.5 shadow-sm">
+              <div className="flex items-center space-x-3 bg-white dark:bg-[#0F172A] border border-slate-205 dark:border-slate-800 rounded-2xl p-3 shadow-md">
                 <textarea
-                  placeholder="Examples:&#13;&#10;Type &quot;Hint 1&quot;&#13;&#10;Type &quot;Explain Concept&quot;&#13;&#10;Type &quot;Where is my mistake?&quot;&#13;&#10;Type &quot;Guide me&quot;&#13;&#10;Type your question..."
+                  placeholder="Ask your AI coach... E.g. 'Explain Concept' or 'Where is my mistake?'"
                   value={followUpInput}
                   onChange={e => setFollowUpInput(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendFollowUp(); } }}
                   disabled={chatLoading}
-                  rows={2}
-                  className="flex-1 bg-transparent text-xs text-slate-700 dark:text-slate-350 placeholder-slate-400 dark:placeholder-slate-600 outline-none disabled:opacity-50 resize-none leading-normal font-semibold animate-none border-none shadow-none focus:ring-0 focus:outline-none"
+                  rows={3}
+                  className="flex-1 bg-transparent text-xs text-slate-700 dark:text-slate-355 placeholder-slate-400 dark:placeholder-slate-650 outline-none disabled:opacity-50 resize-none leading-relaxed font-semibold border-none shadow-none focus:ring-0 focus:outline-none"
                 />
 
                 <button
                   onClick={() => handleSendFollowUp()}
                   disabled={chatLoading || !followUpInput.trim()}
-                  className="h-7 w-7 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-all flex-shrink-0 active:scale-95"
+                  className="h-9 w-9 rounded-xl bg-brand-600 hover:bg-brand-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-all flex-shrink-0 active:scale-95 shadow-md"
                 >
-                  <Send className="h-3.5 w-3.5 text-white" />
+                  <Send className="h-4 w-4 text-white" />
                 </button>
               </div>
             </div>

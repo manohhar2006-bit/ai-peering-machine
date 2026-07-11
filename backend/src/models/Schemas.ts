@@ -225,6 +225,7 @@ export interface IAnswer extends Document {
   teacherApproved?: boolean;
   isOwnerAnswer?: boolean;
   isPublished?: boolean;
+  upvotes?: mongoose.Types.ObjectId[];
   attemptNumber: number;
   isLatest: boolean;
   feedback: string;
@@ -276,6 +277,7 @@ const AnswerSchema = new Schema<IAnswer>({
   teacherApproved: { type: Boolean, default: false },
   isOwnerAnswer: { type: Boolean, default: false },
   isPublished: { type: Boolean, default: false },
+  upvotes: [{ type: Schema.Types.ObjectId, ref: 'User', default: [] }],
   attemptNumber: { type: Number, default: 1 },
   isLatest: { type: Boolean, default: true },
   feedback: { type: String, default: '' },

@@ -722,3 +722,52 @@ export const teacherDecision = async (req: AuthRequest, res: Response) => {
     res.status(500).json({ message: 'Failed to process teacher decision' });
   }
 };
+
+export const upvoteAnswer = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    const answer = await Answer.findById(id);
+    if (!answer) {
+      return res.status(404).json({ message: 'Answer not found' });
+    }
+
+    if (!answer.upvotes) {
+      answer.upvotes = [];
+    }
+
+    const index = answer.upvotes.indexOf(userId as any);
+    if (index === -1) {
+      // Add upvote
+      answer.upvotes.push(userId as any);
+      await answer.save();
+
+      // Award 5 XP to solver for helpful answer upvote
+      await GamificationService.awardPoints(
+        answer.solverId,
+        5,
+        'solve',
+        'Your answer was marked helpful!',
+        undefined,
+        5
+      );
+
+      return res.status(200).json({ message: 'Answer marked as helpful', upvotes: answer.upvotes });
+    } else {
+      // Remove upvote
+      answer.upvotes.splice(index, 1);
+      await answer.save();
+
+      return res.status(200).json({ message: 'Removed helpful mark', upvotes: answer.upvotes });
+    }
+  } catch (err) {
+    console.error('Upvote answer error:', err);
+    res.status(500).json({ message: 'Failed to upvote answer' });
+  }
+};
+
