@@ -358,37 +358,37 @@ export const AskDoubt: React.FC = () => {
   return (
     <div className="max-w-4xl mx-auto p-4 md:p-8 space-y-8">
       {/* Title Header */}
-      <div className="flex items-center space-x-3 mb-2">
-        <div className="h-12 w-12 bg-brand-50 text-brand-600 rounded-2xl flex items-center justify-center dark:bg-brand-950/20 dark:text-brand-400 shadow-sm">
-          <HelpCircle className="h-7 w-7" />
+      <div className="flex items-center space-x-3.5 mb-4 select-none">
+        <div className="h-11 w-11 bg-brand-50 text-brand-600 rounded-xl flex items-center justify-center dark:bg-brand-950/20 dark:text-brand-400 shadow-sm">
+          <HelpCircle className="h-5.5 w-5.5" />
         </div>
         <div>
           <h2 className="text-3xl font-black text-slate-800 dark:text-slate-100 font-sans tracking-tight">
             Initiate a Doubt Quest
           </h2>
-          <p className="text-xs md:text-sm text-slate-400 font-medium">
+          <p className="text-xs md:text-sm text-slate-400 font-bold uppercase tracking-wider mt-0.5">
             Deploy your query through Text, Image, or PDF with AI-routing guidance.
           </p>
         </div>
       </div>
 
       {/* Main Flow Card */}
-      <div className="bg-white rounded-3xl p-6 md:p-8 border border-slate-100 shadow-premium dark:bg-[#1E293B] dark:border-slate-800 transition-colors duration-300">
+      <div className="premium-card p-8">
         
         {/* STEP progress indicator */}
-        <div className="flex items-center justify-between mb-8 border-b border-slate-50 dark:border-slate-800 pb-4">
+        <div className="flex items-center justify-between mb-8 border-b border-slate-100 dark:border-slate-800 pb-4">
           <div className="flex space-x-6 overflow-x-auto py-1">
-            <div className={`flex items-center space-x-2 text-xs font-extrabold uppercase tracking-wider ${activeStep === 'form' ? 'text-brand-650 dark:text-brand-400' : 'text-slate-400'}`}>
+            <div className={`flex items-center space-x-2 text-[10px] font-black uppercase tracking-wider ${activeStep === 'form' ? 'text-brand-600 dark:text-brand-400' : 'text-slate-400'}`}>
               <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] border ${activeStep === 'form' ? 'border-brand-500 bg-brand-50 text-brand-600 dark:bg-brand-950/30' : 'border-slate-200'}`}>1</span>
               <span>Input</span>
             </div>
             {inputType !== 'text' && (
-              <div className={`flex items-center space-x-2 text-xs font-extrabold uppercase tracking-wider ${activeStep === 'review' ? 'text-brand-650 dark:text-brand-400' : 'text-slate-400'}`}>
+              <div className={`flex items-center space-x-2 text-[10px] font-black uppercase tracking-wider ${activeStep === 'review' ? 'text-brand-600 dark:text-brand-400' : 'text-slate-400'}`}>
                 <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] border ${activeStep === 'review' ? 'border-brand-500 bg-brand-50 text-brand-600 dark:bg-brand-950/30' : 'border-slate-200'}`}>2</span>
                 <span>Review OCR</span>
               </div>
             )}
-            <div className={`flex items-center space-x-2 text-xs font-extrabold uppercase tracking-wider ${activeStep === 'preview' ? 'text-brand-650 dark:text-brand-400' : 'text-slate-400'}`}>
+            <div className={`flex items-center space-x-2 text-[10px] font-black uppercase tracking-wider ${activeStep === 'preview' ? 'text-brand-600 dark:text-brand-400' : 'text-slate-400'}`}>
               <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] border ${activeStep === 'preview' ? 'border-brand-500 bg-brand-50 text-brand-600 dark:bg-brand-950/30' : 'border-slate-200'}`}>{inputType === 'text' ? '2' : '3'}</span>
               <span>Preview</span>
             </div>
@@ -406,12 +406,12 @@ export const AskDoubt: React.FC = () => {
         </div>
 
         {aiError ? (
-          <div className="bg-rose-50/50 dark:bg-rose-950/10 border border-rose-105 dark:border-rose-900/35 p-8 rounded-3xl text-center space-y-5 animate-scale-in">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-rose-100 dark:bg-rose-950/40 text-rose-600 mx-auto shadow-sm">
+          <div className="bg-rose-50/50 dark:bg-rose-950/10 border border-rose-100 dark:border-rose-900/35 p-8 rounded-3xl text-center space-y-5 animate-scale-in">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-rose-100 dark:bg-rose-955/40 text-rose-600 mx-auto shadow-sm">
               <AlertTriangle className="h-7 w-7" />
             </div>
             <h4 className="text-lg font-black text-slate-800 dark:text-slate-100">AI Service Offline</h4>
-            <p className="text-sm font-semibold text-slate-550 dark:text-slate-350 leading-relaxed max-w-md mx-auto">
+            <p className="text-sm font-semibold text-slate-500 dark:text-slate-350 leading-relaxed max-w-md mx-auto">
               {aiError === 'timeout'
                 ? 'The AI service is taking longer than expected. Please try again.'
                 : 'The AI service is temporarily busy due to high demand. Please wait a few seconds and try again.'}
@@ -420,14 +420,14 @@ export const AskDoubt: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setAiError(null)}
-                className="px-5 py-2.5 bg-slate-100 hover:bg-slate-205 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-black transition-all"
+                className="px-5 py-2.5 bg-slate-105 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-black transition-all cursor-pointer"
               >
                 Go Back
               </button>
               <button
                 type="button"
                 onClick={() => runAIAnalysis(lastAnalyzedText)}
-                className="inline-flex items-center space-x-2 px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-black shadow-md transition-all"
+                className="inline-flex items-center space-x-2 px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-black shadow-md transition-all cursor-pointer"
               >
                 <RefreshCw className="h-3.5 w-3.5" />
                 <span>Retry AI Analysis</span>
@@ -441,7 +441,7 @@ export const AskDoubt: React.FC = () => {
             {/* Subject selector (Step 1) */}
             <div className="space-y-4">
               <div className="flex items-center justify-between flex-wrap gap-3">
-                <label className="text-xs font-bold uppercase text-slate-450 tracking-wider">
+                <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
                   Subject Classification
                 </label>
                 {/* Elegant Toggle */}
@@ -449,10 +449,10 @@ export const AskDoubt: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setIsCustomSubject(false)}
-                    className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 ${
+                    className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 cursor-pointer ${
                       !isCustomSubject
                         ? 'bg-white text-slate-850 shadow-sm dark:bg-[#1E293B] dark:text-slate-105'
-                        : 'text-slate-400 hover:text-slate-600 dark:text-slate-400 dark:hover:text-slate-200'
+                        : 'text-slate-400 hover:text-slate-650 dark:text-slate-400 dark:hover:text-slate-200'
                     }`}
                   >
                     <span className={`w-2 h-2 rounded-full border border-slate-300 dark:border-slate-600 flex items-center justify-center ${!isCustomSubject ? 'bg-brand-500 border-transparent' : ''}`} />
@@ -461,10 +461,10 @@ export const AskDoubt: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setIsCustomSubject(true)}
-                    className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 ${
+                    className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 cursor-pointer ${
                       isCustomSubject
                         ? 'bg-white text-slate-850 shadow-sm dark:bg-[#1E293B] dark:text-slate-105'
-                        : 'text-slate-400 hover:text-slate-600 dark:text-slate-400 dark:hover:text-slate-200'
+                        : 'text-slate-400 hover:text-slate-650 dark:text-slate-400 dark:hover:text-slate-200'
                     }`}
                   >
                     <span className={`w-2 h-2 rounded-full border border-slate-300 dark:border-slate-600 flex items-center justify-center ${isCustomSubject ? 'bg-brand-500 border-transparent' : ''}`} />
@@ -478,7 +478,7 @@ export const AskDoubt: React.FC = () => {
                 <select
                   value={subjectCode}
                   onChange={(e) => setSubjectCode(e.target.value)}
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 px-4 text-sm font-semibold text-slate-700 focus:border-brand-500 focus:bg-white focus:outline-none dark:border-slate-800 dark:bg-[#0F172A] dark:text-slate-205 dark:focus:border-brand-500 transition-all shadow-sm"
+                  className="w-full premium-input text-sm font-semibold cursor-pointer"
                 >
                   {subjects.length === 0 ? (
                     <option>Loading subjects...</option>
@@ -497,14 +497,14 @@ export const AskDoubt: React.FC = () => {
                   value={customSubject}
                   onChange={(e) => setCustomSubject(e.target.value)}
                   placeholder="e.g., Theory of Computation, Compiler Design, Mathematics III"
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 px-4 text-sm font-semibold text-slate-700 placeholder:text-slate-400 focus:border-brand-500 focus:bg-white focus:outline-none dark:border-slate-800 dark:bg-[#0F172A] dark:text-slate-205 dark:focus:border-brand-500 transition-all shadow-sm"
+                  className="w-full premium-input text-sm font-semibold"
                 />
               )}
             </div>
 
             {/* Input Method Selection Segmented Tabs (Step 3) */}
             <div className="space-y-4">
-              <label className="text-xs font-bold uppercase text-slate-455 tracking-wider block">
+              <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">
                 Input Method
               </label>
               <div className="grid grid-cols-3 gap-2 p-1.5 bg-slate-50 rounded-2xl dark:bg-[#0F172A] max-w-md border border-slate-100 dark:border-slate-800/40">
@@ -513,10 +513,10 @@ export const AskDoubt: React.FC = () => {
                     key={mode}
                     type="button"
                     onClick={() => handleInputTypeChange(mode)}
-                    className={`py-2.5 px-4 rounded-xl text-xs font-extrabold uppercase tracking-wider transition-all flex items-center justify-center space-x-2 ${
+                    className={`py-2 px-4 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center space-x-2 cursor-pointer active:scale-95 ${
                       inputType === mode
                         ? 'bg-brand-600 text-white shadow-premium'
-                        : 'text-slate-450 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+                        : 'text-slate-500 hover:text-slate-805 dark:text-slate-400 dark:hover:text-slate-205'
                     }`}
                   >
                     {mode === 'text' && <FileText className="h-4.5 w-4.5" />}
@@ -528,10 +528,10 @@ export const AskDoubt: React.FC = () => {
               </div>
             </div>
 
-            {/* Question Text Area (Step 2) */}
+             {/* Question Text Area (Step 2) */}
             <div className="space-y-2">
-              <label className="text-xs font-bold uppercase text-slate-455 tracking-wider block">
-                Question
+              <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">
+                Question Details
               </label>
 
               {inputType === 'text' ? (
@@ -541,7 +541,7 @@ export const AskDoubt: React.FC = () => {
                   value={question}
                   onChange={(e) => setQuestion(e.target.value)}
                   placeholder="Type your complete doubt here or upload an image/PDF."
-                  className="w-full rounded-3xl border border-slate-200 bg-slate-50 py-4 px-5 text-sm leading-relaxed text-slate-700 placeholder:text-slate-400 focus:border-brand-500 focus:bg-white focus:outline-none dark:border-slate-800 dark:bg-[#0F172A] dark:text-slate-205 dark:focus:border-brand-500 transition-all shadow-sm"
+                  className="w-full premium-input font-semibold leading-relaxed p-5 text-sm"
                 />
               ) : (
                 <div className="space-y-4">
@@ -551,10 +551,10 @@ export const AskDoubt: React.FC = () => {
                     onDragLeave={handleDragLeave}
                     onDrop={handleDrop}
                     onClick={() => fileInputRef.current?.click()}
-                    className={`group relative border-2 border-dashed rounded-3xl p-8 text-center flex flex-col items-center justify-center cursor-pointer transition-all duration-300 ${
+                    className={`group relative border-2 border-dashed rounded-2xl p-8 text-center flex flex-col items-center justify-center cursor-pointer transition-all duration-300 ${
                       isDragging
                         ? 'border-brand-500 bg-brand-50/20 dark:bg-brand-950/10'
-                        : 'border-slate-200 hover:border-brand-400 bg-slate-50/40 hover:bg-slate-50 dark:border-slate-800 dark:bg-[#0F172A]/30 dark:hover:bg-[#0F172A]/60'
+                        : 'border-slate-200 hover:border-brand-450 bg-slate-50/40 hover:bg-slate-50 dark:border-slate-800 dark:bg-[#0F172A]/30 dark:hover:bg-[#0F172A]/60 shadow-sm'
                     }`}
                   >
                     <input

@@ -35,11 +35,13 @@ export default {
         }
       },
       fontFamily: {
-        sans: ['Outfit', 'Inter', 'sans-serif'],
+        sans: ['Inter', 'Outfit', 'sans-serif'],
       },
       boxShadow: {
-        'premium': '0 4px 20px -2px rgba(99, 102, 241, 0.12), 0 2px 8px -1px rgba(99, 102, 241, 0.08)',
-        'premium-hover': '0 10px 25px -3px rgba(99, 102, 241, 0.18), 0 4px 12px -2px rgba(99, 102, 241, 0.12)',
+        'premium': '0 8px 30px -4px rgba(99, 102, 241, 0.06), 0 4px 12px -2px rgba(99, 102, 241, 0.04), 0 0 0 1px rgba(99, 102, 241, 0.05)',
+        'premium-hover': '0 20px 40px -4px rgba(99, 102, 241, 0.12), 0 8px 20px -2px rgba(99, 102, 241, 0.08)',
+        'card-shadow': '0 8px 30px rgba(0, 0, 0, 0.02), 0 1px 2px rgba(0, 0, 0, 0.02)',
+        'card-shadow-hover': '0 20px 40px rgba(99, 102, 241, 0.06), 0 1px 3px rgba(0, 0, 0, 0.02)',
       }
     },
   },
