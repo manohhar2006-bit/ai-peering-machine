@@ -1,31 +1,35 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import axios from 'axios';
-import { User, Award, Flame, BookOpen, Star, Sparkles } from 'lucide-react';
+import { User, Award, Flame, BookOpen, Star, Sparkles, HelpCircle, CheckCircle, Brain } from 'lucide-react';
 
 const API_URL = 'http://localhost:5000/api';
 
 export const Profile: React.FC = () => {
   const { user, studentProfile, refreshProfile } = useAuth();
   const [subjects, setSubjects] = useState<any[]>([]);
+  const [statistics, setStatistics] = useState<any>(null);
 
   useEffect(() => {
-    const loadSubjects = async () => {
+    const loadData = async () => {
       try {
         await refreshProfile();
-        const response = await axios.get(`${API_URL}/subjects`);
-        setSubjects(response.data);
+        const subResponse = await axios.get(`${API_URL}/subjects`);
+        setSubjects(subResponse.data);
+
+        const statsResponse = await axios.get(`${API_URL}/analytics/student`);
+        setStatistics(statsResponse.data.statistics);
       } catch (err) {
-        console.error('Failed to load subjects:', err);
+        console.error('Failed to load profile data:', err);
       }
     };
-    loadSubjects();
+    loadData();
   }, []);
 
   if (!user) return null;
 
   return (
-    <div className="space-y-6 p-6 max-w-4xl mx-auto">
+    <div className="space-y-6 p-6 max-w-4xl mx-auto font-sans">
       {/* Header */}
       <div className="flex items-center space-x-3 pb-4 border-b border-slate-100 dark:border-slate-800">
         <div className="h-10 w-10 bg-brand-50 text-brand-600 rounded-xl flex items-center justify-center dark:bg-brand-950/20 dark:text-brand-400">
@@ -33,7 +37,7 @@ export const Profile: React.FC = () => {
         </div>
         <div>
           <h2 className="text-2xl font-black text-slate-800 dark:text-slate-100">Student Profile</h2>
-          <p className="text-sm text-slate-400">Your gamer statistics and academic reputation scores</p>
+          <p className="text-sm text-slate-400">Your private learning analytics, badges, and reputation metrics</p>
         </div>
       </div>
 
@@ -52,52 +56,91 @@ export const Profile: React.FC = () => {
           </span>
         </div>
 
-        {/* Gamified stats breakdown */}
+        {/* Private Stats breakdown */}
         <div className="rounded-3xl border border-slate-100 bg-white p-6 shadow-premium dark:bg-[#1E293B] dark:border-slate-800 transition-colors duration-300 md:col-span-2 space-y-6">
-          <h4 className="text-sm font-bold text-slate-805 uppercase tracking-wider dark:text-slate-300">Quest Statistics</h4>
-          <div className="grid grid-cols-2 gap-6">
-            <div className="flex items-center space-x-3.5">
-              <div className="h-10 w-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-500 dark:bg-indigo-950/20">
-                <Award className="h-6 w-6" />
-              </div>
+          <h4 className="text-sm font-bold text-slate-800 uppercase tracking-wider dark:text-slate-350">Private Statistics</h4>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            <div className="flex items-center space-x-3 bg-slate-50 dark:bg-slate-900/60 p-3 rounded-2xl border border-slate-100 dark:border-slate-800">
+              <HelpCircle className="h-5 w-5 text-indigo-500" />
               <div>
-                <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-bold">Total XP</span>
-                <span className="font-black text-slate-700 text-lg dark:text-slate-205">{studentProfile?.xp} XP</span>
+                <span className="text-[9px] text-slate-400 uppercase tracking-wider block font-bold">Questions Asked</span>
+                <span className="font-black text-slate-700 text-sm dark:text-slate-200">{statistics?.questionsAsked ?? 0}</span>
               </div>
             </div>
 
-            <div className="flex items-center space-x-3.5">
-              <div className="h-10 w-10 bg-orange-50 rounded-xl flex items-center justify-center text-orange-500 dark:bg-orange-950/20">
-                <Flame className="h-6 w-6 animate-pulse" />
-              </div>
+            <div className="flex items-center space-x-3 bg-slate-50 dark:bg-slate-900/60 p-3 rounded-2xl border border-slate-100 dark:border-slate-800">
+              <BookOpen className="h-5 w-5 text-emerald-500" />
               <div>
-                <span className="text-[10px] text-slate-405 uppercase tracking-wider block font-bold">Active Streak</span>
-                <span className="font-black text-slate-700 text-lg dark:text-slate-205">{studentProfile?.streak} Days</span>
+                <span className="text-[9px] text-slate-400 uppercase tracking-wider block font-bold">Questions Solved</span>
+                <span className="font-black text-slate-700 text-sm dark:text-slate-200">{statistics?.questionsSolved ?? 0}</span>
               </div>
             </div>
 
-            <div className="flex items-center space-x-3.5">
-              <div className="h-10 w-10 bg-emerald-55/10 rounded-xl flex items-center justify-center text-emerald-500 dark:bg-emerald-950/20">
-                <BookOpen className="h-6 w-6" />
-              </div>
+            <div className="flex items-center space-x-3 bg-slate-50 dark:bg-slate-900/60 p-3 rounded-2xl border border-slate-100 dark:border-slate-800">
+              <CheckCircle className="h-5 w-5 text-teal-505" />
               <div>
-                <span className="text-[10px] text-slate-405 uppercase tracking-wider block font-bold">Solved Doubts</span>
-                <span className="font-black text-slate-700 text-lg dark:text-slate-205">{studentProfile?.resolvedDoubtsCount} Resolved</span>
+                <span className="text-[9px] text-slate-400 uppercase tracking-wider block font-bold">Accepted Answers</span>
+                <span className="font-black text-slate-700 text-sm dark:text-slate-200">{statistics?.acceptedAnswers ?? 0}</span>
               </div>
             </div>
 
-            <div className="flex items-center space-x-3.5">
-              <div className="h-10 w-10 bg-sky-50 rounded-xl flex items-center justify-center text-sky-500 dark:bg-sky-950/20">
-                <Sparkles className="h-6 w-6 text-brand-500" />
-              </div>
+            <div className="flex items-center space-x-3 bg-slate-50 dark:bg-slate-900/60 p-3 rounded-2xl border border-slate-100 dark:border-slate-800">
+              <Sparkles className="h-5 w-5 text-brand-500" />
               <div>
-                <span className="text-[10px] text-slate-405 uppercase tracking-wider block font-bold">Current Level</span>
-                <span className="font-black text-slate-700 text-lg dark:text-slate-205">Level {studentProfile?.level}</span>
+                <span className="text-[9px] text-slate-400 uppercase tracking-wider block font-bold">Top Answers</span>
+                <span className="font-black text-slate-700 text-sm dark:text-slate-200">{statistics?.topAnswers ?? 0}</span>
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-3 bg-slate-50 dark:bg-slate-900/60 p-3 rounded-2xl border border-slate-100 dark:border-slate-800">
+              <Award className="h-5 w-5 text-yellow-500" />
+              <div>
+                <span className="text-[9px] text-slate-400 uppercase tracking-wider block font-bold">XP / Level</span>
+                <span className="font-black text-slate-700 text-xs dark:text-slate-200">{studentProfile?.xp} XP (Lvl {studentProfile?.level})</span>
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-3 bg-slate-50 dark:bg-slate-900/60 p-3 rounded-2xl border border-slate-100 dark:border-slate-800">
+              <Brain className="h-5 w-5 text-purple-500" />
+              <div>
+                <span className="text-[9px] text-slate-400 uppercase tracking-wider block font-bold">AI Evaluation Score</span>
+                <span className="font-black text-slate-700 text-sm dark:text-slate-200">{statistics?.aiScore ?? 0}%</span>
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-3 bg-slate-50 dark:bg-slate-900/60 p-3 rounded-2xl border border-slate-100 dark:border-slate-800 col-span-2">
+              <Star className="h-5 w-5 text-brand-500" />
+              <div>
+                <span className="text-[9px] text-slate-400 uppercase tracking-wider block font-bold">Contribution Score</span>
+                <span className="font-black text-slate-700 text-sm dark:text-slate-200">{statistics?.contributionScore ?? 0} Pts</span>
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-3 bg-slate-50 dark:bg-slate-900/60 p-3 rounded-2xl border border-slate-100 dark:border-slate-800">
+              <Flame className="h-5 w-5 text-orange-500 animate-pulse" />
+              <div>
+                <span className="text-[9px] text-slate-400 uppercase tracking-wider block font-bold">Streak</span>
+                <span className="font-black text-slate-700 text-sm dark:text-slate-200">{studentProfile?.streak} Days</span>
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Badges Section */}
+      {studentProfile?.badges && studentProfile.badges.length > 0 && (
+        <div className="rounded-3xl border border-slate-100 bg-white p-6 shadow-premium dark:bg-[#1E293B] dark:border-slate-800 transition-colors duration-300 space-y-4">
+          <h4 className="text-sm font-bold text-slate-800 uppercase tracking-wider dark:text-slate-350">Earned Badges</h4>
+          <div className="flex flex-wrap gap-3">
+            {studentProfile.badges.map((badge: any, i: number) => (
+              <span key={i} className="bg-brand-50 dark:bg-brand-950/20 text-brand-655 dark:text-brand-405 border border-brand-200/40 dark:border-brand-950/30 px-3 py-1.5 rounded-xl text-xs font-bold capitalize flex items-center space-x-1.5">
+                <Award className="h-4 w-4" />
+                <span>{badge.badgeId.replace('_', ' ')}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Subject mastery */}
       <div className="rounded-3xl border border-slate-100 bg-white p-6 shadow-premium dark:bg-[#1E293B] dark:border-slate-800 transition-colors duration-300 space-y-4">
@@ -111,7 +154,7 @@ export const Profile: React.FC = () => {
             return (
               <div key={sub._id} className="flex justify-between items-center bg-slate-50 p-4 rounded-2xl border border-slate-100 dark:bg-[#0F172A] dark:border-slate-800">
                 <div>
-                  <span className="font-bold text-sm text-slate-700 dark:text-slate-200 block">{sub.name}</span>
+                  <span className="font-bold text-sm text-slate-700 dark:text-slate-205 block">{sub.name}</span>
                   <span className="text-[10px] text-slate-400 uppercase tracking-wider">{sub.code}</span>
                 </div>
                 <span className="font-black text-brand-655 text-base dark:text-brand-400">{rep} Rep</span>

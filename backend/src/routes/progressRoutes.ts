@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { AuthRequest } from '../middleware/auth';
-import { User, StudentProfile, Doubt, Answer, HintHistory, StudentProgress } from '../models/Schemas';
+import { User, StudentProfile, Doubt, Answer, HintHistory, StudentProgress, PointTransaction } from '../models/Schemas';
 import * as geminiService from '../services/geminiService';
 
 const router = Router();
@@ -37,11 +37,25 @@ async function getOrCreateStudentProgress(studentId: string, teacherId: string, 
     const hintsUsed = await HintHistory.countDocuments({ userId: studentId, ladderIndex: { $gte: 0 }, revealedAt: { $gte: sevenDaysAgo } });
     
     const profile = await StudentProfile.findOne({ userId: studentId });
-    const xpEarned = 120; // Default simulated weekly XP
+    const txs = await PointTransaction.find({ userId: studentId, createdAt: { $gte: sevenDaysAgo } });
+    const xpEarned = txs.reduce((acc, t) => acc + t.points, 0);
     const streakDays = profile?.streak || 0;
     
     const student = await User.findById(studentId);
     const weakTopics = student?.weakTopics || [];
+
+    // Calculate previous week's performance score to compute real improvement
+    let prevWeekNum = weekNumber - 1;
+    let prevYear = year;
+    if (prevWeekNum === 0) {
+      prevWeekNum = 52;
+      prevYear = year - 1;
+    }
+    const prevProgress = await StudentProgress.findOne({ student: studentId, weekNumber: prevWeekNum, year: prevYear });
+    const prevScore = prevProgress ? prevProgress.performanceScore : 0;
+
+    const performanceScore = Math.min(100, Math.round(((doubtsResolved + correctAnswers * 2) * 10) + (xpEarned / 10)));
+    const improvementPercent = prevScore > 0 ? Math.max(0, Math.round(((performanceScore - prevScore) / prevScore) * 100)) : 0;
     
     progress = new StudentProgress({
       student: studentId,
@@ -53,12 +67,12 @@ async function getOrCreateStudentProgress(studentId: string, teacherId: string, 
       answersGiven,
       correctAnswers,
       hintsUsed,
-      xpEarned: profile?.xp ? Math.min(profile.xp, xpEarned) : xpEarned,
+      xpEarned,
       streakDays,
       weakTopics,
-      strongTopics: ['General Logic'],
-      performanceScore: Math.min(100, Math.round(((doubtsResolved + correctAnswers * 2) * 10) + (xpEarned / 10))),
-      improvementPercent: Math.floor(Math.random() * 15) + 5,
+      strongTopics: [],
+      performanceScore,
+      improvementPercent,
       aiGeneratedReport: ''
     });
     

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import axios from 'axios';
+import { useAuth } from '../../context/AuthContext';
 import { 
   ArrowLeft, 
   BookOpen, 
@@ -52,6 +53,7 @@ interface FocusRoom {
 
 export const StudentFocusRoomDetail: React.FC = () => {
   const { roomId } = useParams<{ roomId: string }>();
+  const { refreshProfile } = useAuth();
   
   const [room, setRoom] = useState<FocusRoom | null>(null);
   const [loading, setLoading] = useState(true);
@@ -386,7 +388,22 @@ export const StudentFocusRoomDetail: React.FC = () => {
         setCorrectlyAnsweredIndices(prev => [...prev, qIdx]);
         setAnswerText('');
         setActiveAnswerIndex(null);
+
+        // Dispatch reward popups/confetti
+        window.dispatchEvent(new CustomEvent('trigger-reward', {
+          detail: {
+            xpGained: response.data.xpGained || 0,
+            coinsGained: response.data.coinsGained || 0,
+            levelUp: response.data.levelUp || false,
+            newLevel: response.data.newLevel || 1,
+            streakCount: response.data.streakCount || 0,
+            streakMessage: response.data.streakMessage || '',
+            streakBonusXP: response.data.streakBonusXP || 0
+          }
+        }));
+
         await fetchRoomDetails(); // Refresh room XP and progress indicators
+        await refreshProfile(); // Refresh student statistics
       }
     } catch (err) {
       console.error('Failed to submit answer:', err);

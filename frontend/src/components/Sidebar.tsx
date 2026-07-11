@@ -12,7 +12,8 @@ import {
   Settings,
   LineChart,
   Activity,
-  Users
+  Users,
+  BookOpen
 } from 'lucide-react';
 
 export const Sidebar: React.FC = () => {
@@ -22,6 +23,7 @@ export const Sidebar: React.FC = () => {
 
   const studentLinks = [
     { to: '/student/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { to: '/student/learning-hub', label: 'My Learning Hub', icon: BookOpen },
     { to: '/ask-doubt', label: 'Ask Doubt', icon: HelpCircle },
     { to: '/feed', label: 'Doubt Feed', icon: Compass },
     { to: '/student/focus-rooms', label: 'Focus Rooms', icon: Users },

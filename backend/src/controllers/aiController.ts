@@ -1,6 +1,9 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
 import * as geminiService from '../services/geminiService';
+import fs from 'fs';
+const pdfParse: any = require('pdf-parse');
+import { validateFileSize } from '../middleware/uploadMiddleware';
 import {
   Doubt,
   Answer,
@@ -12,6 +15,35 @@ import {
 } from '../models/Schemas';
 import { GamificationService } from '../services/gamificationService';
 import { mapEscalationReason } from '../services/aiService';
+
+const handleControllerError = (error: any, res: Response, fallbackValue?: any) => {
+  const errMsg = error?.message || String(error);
+  const errStatus = error?.status;
+  const isAiBusy = 
+    errStatus === 503 || 
+    errStatus === 429 || 
+    errStatus === 408 || 
+    errMsg.includes("experiencing high demand") || 
+    errMsg.includes("503") || 
+    errMsg.includes("429") ||
+    errMsg.includes("fetch failed") ||
+    errMsg.includes("timeout") ||
+    errMsg === "GEMINI_TIMEOUT_EXCEEDED";
+
+  if (isAiBusy) {
+    return res.status(200).json({
+      success: false,
+      status: "AI_BUSY",
+      message: "The AI service is currently experiencing high demand. Please try again in a few moments."
+    });
+  }
+
+  if (fallbackValue !== undefined) {
+    return res.status(200).json(fallbackValue);
+  }
+
+  return res.status(500).json({ message: errMsg || 'Failed to process AI request' });
+};
 
 // POST /api/ai/analyze-doubt
 export const analyzeDoubt = async (req: AuthRequest, res: Response) => {
@@ -46,25 +78,30 @@ export const analyzeDoubt = async (req: AuthRequest, res: Response) => {
     const result = await geminiService.analyzeDoubt(doubtText, subject || 'General');
 
     if (doubtId) {
+      const topic = result.topic || "General Concept";
+      const difficulty = (result.difficulty === 'easy' || result.difficulty === 'medium' || result.difficulty === 'hard') ? result.difficulty : "medium";
+      const explanation = result.conceptExplanation || result.explanation || "AI analysis temporarily unavailable. Please try again.";
+      const isPeerAnswerable = (result.confidenceScore ?? 0) > 50;
+
       const aiAnalysis = new AIAnalysis({
         doubtId,
-        topic: result.topic,
-        difficulty: result.difficulty,
-        isPeerAnswerable: result.confidenceScore > 50,
-        explanation: result.conceptExplanation
+        topic,
+        difficulty,
+        isPeerAnswerable,
+        explanation
       });
       await aiAnalysis.save();
 
       await Doubt.findByIdAndUpdate(doubtId, {
-        topic: result.topic,
-        difficulty: result.difficulty
+        topic,
+        difficulty
       });
     }
 
     res.status(200).json(result);
   } catch (error: any) {
     console.error('Error in analyzeDoubt endpoint:', error);
-    res.status(200).json({
+    return handleControllerError(error, res, {
       topic: "General Concept",
       difficulty: "medium",
       conceptExplanation: "AI analysis temporarily unavailable. Error occurred.",
@@ -126,51 +163,77 @@ export const generateHint = async (req: AuthRequest, res: Response) => {
     });
   } catch (error) {
     console.error('Error in generateHint endpoint:', error);
-    res.status(500).json({ message: 'Failed to generate progressive hint' });
+    return handleControllerError(error, res);
   }
 };
 
 // POST /api/ai/chat-coach
 export const chatCoach = async (req: AuthRequest, res: Response) => {
   try {
-    const { doubtId, query } = req.body;
+    const { doubtId, query, doubtText: reqDoubtText, subject: reqSubject, answerText } = req.body;
     const userId = req.user?.userId;
 
     if (!doubtId || !query) {
       return res.status(400).json({ message: 'Doubt ID and student query are required' });
     }
 
-    const doubt = await Doubt.findById(doubtId);
+    const doubt = await Doubt.findById(doubtId).populate('subjectId');
     if (!doubt) {
       return res.status(404).json({ message: 'Doubt not found' });
     }
 
-    const doubtText = `${doubt.title}\n${doubt.description}`;
+    const doubtText = reqDoubtText || `${doubt.title}\n${doubt.description}`;
+    const subject = reqSubject || (doubt.subjectId as any)?.name || 'General';
 
-    const history = await HintHistory.find({ doubtId, userId }).sort({ revealedAt: 1 });
+    // Retrieve previous conversation history for context
+    const history = userId ? await HintHistory.find({ doubtId, userId }).sort({ revealedAt: 1 }) : [];
 
-    const reply = await geminiService.generateFollowUpReply(doubtText, history, query);
+    const parsedResponse = await geminiService.getCoachResponse(doubtText, subject, query, answerText, history);
 
-    const historyEntry = new HintHistory({
-      doubtId,
-      userId,
-      ladderIndex: -1,
-      queryText: query,
-      hintContent: reply
-    });
-    await historyEntry.save();
+    // Save to HintHistory DB record
+    let hintContentStr = parsedResponse.reply || "";
+    
+    // Save progressive hints with correct ladderIndex (0 for Hint 1, 1 for Hint 2, 2 for Hint 3)
+    // If it's a blocked hint or other intent, save with ladderIndex -1
+    let ladderIndex = -1;
+    if (parsedResponse.intent === 'HINT' && parsedResponse.status === 'success' && typeof parsedResponse.hintNumber === 'number') {
+      ladderIndex = parsedResponse.hintNumber - 1;
+    }
 
-    res.status(200).json({
-      queryText: query,
-      hintContent: reply,
-      revealedAt: historyEntry.revealedAt,
-      ladderIndex: -1
-    });
+    if (userId && parsedResponse.status === 'success') {
+      const historyEntry = new HintHistory({
+        doubtId,
+        userId,
+        ladderIndex,
+        queryText: query,
+        hintContent: hintContentStr
+      });
+      await historyEntry.save();
+    }
+
+    res.status(200).json(parsedResponse);
   } catch (error) {
     console.error('Error in chatCoach endpoint:', error);
-    res.status(500).json({ message: 'Failed to process follow-up query' });
+    return handleControllerError(error, res);
   }
 };
+
+// POST /api/ai/deep-analysis
+export const deepAnalysis = async (req: AuthRequest, res: Response) => {
+  try {
+    const { doubtText, subject } = req.body;
+    if (!doubtText) {
+      return res.status(400).json({ message: 'Doubt text is required' });
+    }
+
+    const parsedResponse = await geminiService.getDeepAnalysis(doubtText, subject || 'General');
+    res.status(200).json(parsedResponse);
+  } catch (error) {
+    console.error('Error in deepAnalysis endpoint:', error);
+    return handleControllerError(error, res);
+  }
+};
+
 
 // POST /api/ai/evaluate-answer
 export const evaluateAnswer = async (req: AuthRequest, res: Response) => {
@@ -254,7 +317,7 @@ export const evaluateAnswer = async (req: AuthRequest, res: Response) => {
     res.status(200).json(result);
   } catch (error) {
     console.error('Error in evaluateAnswer endpoint:', error);
-    res.status(200).json({
+    return handleControllerError(error, res, {
       verdict: "partially_correct",
       overallScore: 50,
       score: 50,
@@ -359,7 +422,7 @@ export const referee = async (req: AuthRequest, res: Response) => {
     });
   } catch (error) {
     console.error('Error in referee endpoint:', error);
-    res.status(200).json({
+    return handleControllerError(error, res, {
       bestAnswerIndex: 0,
       ranking: [0],
       comparison: "Referee unavailable. Showing default ordering.",
@@ -485,7 +548,7 @@ export const escalate = async (req: AuthRequest, res: Response) => {
     res.status(200).json(result);
   } catch (error) {
     console.error('Error in escalate endpoint:', error);
-    res.status(200).json({
+    return handleControllerError(error, res, {
       shouldEscalate: false,
       reason: "Escalation check unavailable.",
       urgencyLevel: "low",
@@ -525,8 +588,141 @@ export const chatAssistant = async (req: AuthRequest, res: Response) => {
     res.status(200).json({ reply });
   } catch (error: any) {
     console.error('AI assistant chat error:', error);
-    res.status(200).json({
+    return handleControllerError(error, res, {
       reply: "I am having trouble connecting to my knowledge base right now. Please try asking again in a few moments, or check with your class peers!"
     });
+  }
+};
+
+// POST /api/ai/ocr
+export const processOcr = async (req: AuthRequest, res: Response) => {
+  try {
+    const file = req.file;
+    if (!file) {
+      return res.status(400).json({ message: 'No file uploaded' });
+    }
+
+    // Validate size limit based on type
+    const sizeError = validateFileSize(file);
+    if (sizeError) {
+      if (fs.existsSync(file.path)) {
+        fs.unlinkSync(file.path);
+      }
+      return res.status(400).json({ message: sizeError });
+    }
+
+    const fileBuffer = fs.readFileSync(file.path);
+    let extractedText = '';
+
+    if (file.mimetype === 'application/pdf') {
+      try {
+        const parsed = await pdfParse(fileBuffer);
+        const directText = parsed.text ? parsed.text.trim() : '';
+
+        if (directText.length > 20) {
+          // Digital PDF: clean formatting using Gemini
+          extractedText = await geminiService.cleanPdfText(directText);
+        } else {
+          // Scanned PDF: OCR using Gemini
+          extractedText = await geminiService.extractTextFromMedia(fileBuffer, file.mimetype);
+        }
+      } catch (pdfError) {
+        console.warn('pdf-parse failed, falling back to Gemini OCR:', pdfError);
+        extractedText = await geminiService.extractTextFromMedia(fileBuffer, file.mimetype);
+      }
+    } else {
+      // Image: OCR using Gemini
+      extractedText = await geminiService.extractTextFromMedia(fileBuffer, file.mimetype);
+    }
+
+    if (!extractedText || extractedText.trim().length === 0) {
+      if (fs.existsSync(file.path)) {
+        fs.unlinkSync(file.path);
+      }
+      return res.status(422).json({ message: 'AI could not extract any text from the uploaded file. Please make sure the text is clear, or type the doubt directly.' });
+    }
+
+    const relativePath = `/uploads/${file.filename}`;
+    const originalUploadUrl = `${req.protocol}://${req.get('host')}${relativePath}`;
+
+    res.status(200).json({
+      extractedText,
+      originalUploadUrl
+    });
+  } catch (error: any) {
+    console.error('OCR processing error:', error);
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    return handleControllerError(error, res);
+  }
+};
+
+export const getConsensus = async (req: AuthRequest, res: Response) => {
+  try {
+    const { doubtId } = req.params;
+    const doubt = await Doubt.findById(doubtId);
+    if (!doubt) {
+      return res.status(404).json({ message: 'Doubt not found' });
+    }
+
+    const answers = await Answer.find({ doubtId });
+    if (answers.length === 0) {
+      return res.status(200).json({
+        idealCombinedAnswer: "No student answers have been submitted yet to generate a consensus.",
+        commonCorrectConcepts: [],
+        commonMistakes: [],
+        missingConcepts: [],
+        recommendedLearningResources: [],
+        teacherNotes: null
+      });
+    }
+
+    const answersText = answers.map(a => a.content);
+    const consensus = await geminiService.generateConsensusAnswer(
+      `${doubt.title}\n${doubt.description}`,
+      answersText
+    );
+
+    // Fetch teacher notes from RefereeEvaluation if available
+    const refereeEval = await RefereeEvaluation.findOne({ doubtId, teacherApproved: true });
+
+    res.status(200).json({
+      ...consensus,
+      teacherNotes: refereeEval?.teacherNote || null
+    });
+  } catch (error) {
+    console.error('Error generating consensus:', error);
+    return handleControllerError(error, res);
+  }
+};
+
+export const uploadFileOnly = async (req: AuthRequest, res: Response) => {
+  try {
+    const file = req.file;
+    if (!file) {
+      return res.status(400).json({ message: 'No file uploaded' });
+    }
+
+    const sizeError = validateFileSize(file);
+    if (sizeError) {
+      if (fs.existsSync(file.path)) {
+        fs.unlinkSync(file.path);
+      }
+      return res.status(400).json({ message: sizeError });
+    }
+
+    const relativePath = `/uploads/${file.filename}`;
+    const originalUploadUrl = `${req.protocol}://${req.get('host')}${relativePath}`;
+
+    res.status(200).json({
+      originalUploadUrl
+    });
+  } catch (error: any) {
+    console.error('File upload error:', error);
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    return res.status(500).json({ message: 'Failed to upload file' });
   }
 };

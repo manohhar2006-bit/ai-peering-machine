@@ -16,7 +16,8 @@ import {
   Loader2, 
   Sparkles,
   RefreshCw,
-  X
+  X,
+  Star
 } from 'lucide-react';
 import { 
   LineChart, 
@@ -54,6 +55,13 @@ interface StudentData {
     streak: number;
     badges: Array<{ badgeId: string; earnedAt: string }>;
     performanceLevel: string;
+    questionsAsked?: number;
+    questionsSolved?: number;
+    acceptedAnswers?: number;
+    topAnswers?: number;
+    knowledgeBaseContributions?: number;
+    aiScore?: number;
+    contributionScore?: number;
   };
   weakTopics: string[];
   strongTopics: string[];
@@ -298,12 +306,7 @@ export const StudentProfile: React.FC = () => {
     XP: w.xpEarned,
     Doubts: w.doubtsPosted,
     Answers: w.correctAnswers
-  })) : [
-    { name: 'W1', XP: 0, Doubts: 0, Answers: 0 },
-    { name: 'W2', XP: 40, Doubts: 1, Answers: 1 },
-    { name: 'W3', XP: 120, Doubts: 3, Answers: 2 },
-    { name: 'W4', XP: stats.xp, Doubts: stats.totalDoubts, Answers: stats.correctAnswers }
-  ];
+  })) : [];
 
   return (
     <div className="space-y-8 p-6 max-w-7xl mx-auto">
@@ -374,24 +377,39 @@ export const StudentProfile: React.FC = () => {
       </div>
 
       {/* Stats Cards Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <div className="bg-white dark:bg-[#1E293B] rounded-2xl p-4 border border-slate-100 dark:border-slate-805 text-center shadow-sm">
           <HelpCircle className="h-5 w-5 text-indigo-500 mx-auto mb-1.5" />
-          <p className="text-[10px] font-extrabold text-slate-405 dark:text-slate-500 uppercase tracking-wider">Doubts</p>
-          <h4 className="text-xl font-black text-slate-800 dark:text-slate-100 mt-0.5">{stats.totalDoubts}</h4>
+          <p className="text-[10px] font-extrabold text-slate-405 dark:text-slate-500 uppercase tracking-wider">Questions Asked</p>
+          <h4 className="text-xl font-black text-slate-800 dark:text-slate-100 mt-0.5">{stats.questionsAsked ?? stats.totalDoubts}</h4>
         </div>
         <div className="bg-white dark:bg-[#1E293B] rounded-2xl p-4 border border-slate-100 dark:border-slate-805 text-center shadow-sm">
           <BookOpen className="h-5 w-5 text-brand-500 mx-auto mb-1.5" />
-          <p className="text-[10px] font-extrabold text-slate-405 dark:text-slate-500 uppercase tracking-wider">Resolved</p>
-          <h4 className="text-xl font-black text-slate-800 dark:text-slate-100 mt-0.5">{stats.resolvedDoubts}</h4>
+          <p className="text-[10px] font-extrabold text-slate-405 dark:text-slate-500 uppercase tracking-wider">Questions Solved</p>
+          <h4 className="text-xl font-black text-slate-800 dark:text-slate-100 mt-0.5">{stats.questionsSolved ?? stats.resolvedDoubts}</h4>
         </div>
         <div className="bg-white dark:bg-[#1E293B] rounded-2xl p-4 border border-slate-100 dark:border-slate-805 text-center shadow-sm">
           <Check className="h-5 w-5 text-emerald-500 mx-auto mb-1.5" />
-          <p className="text-[10px] font-extrabold text-slate-405 dark:text-slate-500 uppercase tracking-wider">Accepted Ans</p>
-          <h4 className="text-xl font-black text-slate-800 dark:text-slate-100 mt-0.5">{stats.correctAnswers}</h4>
+          <p className="text-[10px] font-extrabold text-slate-405 dark:text-slate-500 uppercase tracking-wider">Accepted Answers</p>
+          <h4 className="text-xl font-black text-slate-800 dark:text-slate-100 mt-0.5">{stats.acceptedAnswers ?? stats.correctAnswers}</h4>
         </div>
         <div className="bg-white dark:bg-[#1E293B] rounded-2xl p-4 border border-slate-100 dark:border-slate-805 text-center shadow-sm">
-          <Award className="h-5 w-5 text-amber-500 mx-auto mb-1.5" />
+          <Sparkles className="h-5 w-5 text-yellow-500 mx-auto mb-1.5" />
+          <p className="text-[10px] font-extrabold text-slate-405 dark:text-slate-500 uppercase tracking-wider">Top Answers</p>
+          <h4 className="text-xl font-black text-slate-800 dark:text-slate-100 mt-0.5">{stats.topAnswers ?? 0}</h4>
+        </div>
+        <div className="bg-white dark:bg-[#1E293B] rounded-2xl p-4 border border-slate-100 dark:border-slate-805 text-center shadow-sm">
+          <Brain className="h-5 w-5 text-purple-500 mx-auto mb-1.5" />
+          <p className="text-[10px] font-extrabold text-slate-405 dark:text-slate-500 uppercase tracking-wider">AI Avg Score</p>
+          <h4 className="text-xl font-black text-slate-800 dark:text-slate-100 mt-0.5">{stats.aiScore ?? 0}%</h4>
+        </div>
+        <div className="bg-white dark:bg-[#1E293B] rounded-2xl p-4 border border-slate-100 dark:border-slate-805 text-center shadow-sm">
+          <Star className="h-5 w-5 text-brand-500 mx-auto mb-1.5" />
+          <p className="text-[10px] font-extrabold text-slate-405 dark:text-slate-500 uppercase tracking-wider">Contribution Score</p>
+          <h4 className="text-xl font-black text-slate-800 dark:text-slate-100 mt-0.5">{stats.contributionScore ?? 0}</h4>
+        </div>
+        <div className="bg-white dark:bg-[#1E293B] rounded-2xl p-4 border border-slate-100 dark:border-slate-805 text-center shadow-sm">
+          <Award className="h-5 w-5 text-indigo-500 mx-auto mb-1.5" />
           <p className="text-[10px] font-extrabold text-slate-405 dark:text-slate-500 uppercase tracking-wider">Total XP</p>
           <h4 className="text-xl font-black text-slate-800 dark:text-slate-100 mt-0.5">{stats.xp}</h4>
         </div>
@@ -401,9 +419,14 @@ export const StudentProfile: React.FC = () => {
           <h4 className="text-xl font-black text-slate-800 dark:text-slate-100 mt-0.5">{stats.hintsUsed}</h4>
         </div>
         <div className="bg-white dark:bg-[#1E293B] rounded-2xl p-4 border border-slate-100 dark:border-slate-805 text-center shadow-sm">
-          <Flame className="h-5 w-5 text-rose-500 mx-auto mb-1.5" />
+          <Flame className="h-5 w-5 text-orange-500 mx-auto mb-1.5" />
           <p className="text-[10px] font-extrabold text-slate-405 dark:text-slate-500 uppercase tracking-wider">Streak</p>
           <h4 className="text-xl font-black text-slate-800 dark:text-slate-100 mt-0.5">{stats.streak} days</h4>
+        </div>
+        <div className="bg-white dark:bg-[#1E293B] rounded-2xl p-4 border border-slate-100 dark:border-slate-805 text-center shadow-sm">
+          <BookOpen className="h-5 w-5 text-teal-500 mx-auto mb-1.5" />
+          <p className="text-[10px] font-extrabold text-slate-405 dark:text-slate-500 uppercase tracking-wider">KB Contribs</p>
+          <h4 className="text-xl font-black text-slate-800 dark:text-slate-100 mt-0.5">{stats.knowledgeBaseContributions ?? 0}</h4>
         </div>
       </div>
 
@@ -540,27 +563,33 @@ export const StudentProfile: React.FC = () => {
           Weekly Performance Chart (Last 6 Weeks)
         </h3>
         
-        <div className="h-72 w-full text-slate-655 dark:text-slate-400">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" className="dark:stroke-slate-800/60" />
-              <XAxis dataKey="name" stroke="#94A3B8" fontSize={10} fontWeight="bold" />
-              <YAxis stroke="#94A3B8" fontSize={10} fontWeight="bold" />
-              <Tooltip 
-                contentStyle={{ 
-                  backgroundColor: '#1E293B', 
-                  borderRadius: '12px', 
-                  border: 'none', 
-                  color: '#fff',
-                  fontSize: '11px',
-                  fontWeight: 'bold'
-                }} 
-              />
-              <Line type="monotone" dataKey="XP" stroke="#6366F1" strokeWidth={3} dot={{ r: 5 }} activeDot={{ r: 7 }} />
-              <Line type="monotone" dataKey="Doubts" stroke="#F43F5E" strokeWidth={2} dot={{ r: 3 }} />
-              <Line type="monotone" dataKey="Answers" stroke="#10B981" strokeWidth={2} dot={{ r: 3 }} />
-            </LineChart>
-          </ResponsiveContainer>
+        <div className="h-72 w-full text-slate-655 dark:text-slate-400 flex items-center justify-center">
+          {chartData.length === 0 ? (
+            <div className="text-xs text-slate-400 font-semibold bg-slate-50/50 dark:bg-slate-850/10 w-full h-full flex items-center justify-center rounded-2xl">
+              No performance data available.
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" className="dark:stroke-slate-800/60" />
+                <XAxis dataKey="name" stroke="#94A3B8" fontSize={10} fontWeight="bold" />
+                <YAxis stroke="#94A3B8" fontSize={10} fontWeight="bold" />
+                <Tooltip 
+                  contentStyle={{ 
+                    backgroundColor: '#1E293B', 
+                    borderRadius: '12px', 
+                    border: 'none', 
+                    color: '#fff',
+                    fontSize: '11px',
+                    fontWeight: 'bold'
+                  }} 
+                />
+                <Line type="monotone" dataKey="XP" stroke="#6366F1" strokeWidth={3} dot={{ r: 5 }} activeDot={{ r: 7 }} />
+                <Line type="monotone" dataKey="Doubts" stroke="#F43F5E" strokeWidth={2} dot={{ r: 3 }} />
+                <Line type="monotone" dataKey="Answers" stroke="#10B981" strokeWidth={2} dot={{ r: 3 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
         </div>
       </div>
 

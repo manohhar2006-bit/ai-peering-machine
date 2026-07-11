@@ -12,6 +12,8 @@ export interface StudentProfile {
   xp: number;
   level: number;
   streak: number;
+  coins: number;
+  consecutiveSolves: number;
   badges: Array<{ badgeId: string; earnedAt: string }>;
   subjectReputation: Record<string, number>;
   resolvedDoubtsCount: number;

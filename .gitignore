@@ -23,3 +23,7 @@ dist/
 .DS_Store
 *.suo
 Thumbs.db
+
+# Uploads
+backend/uploads/
+uploads/

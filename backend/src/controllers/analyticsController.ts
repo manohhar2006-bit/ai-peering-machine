@@ -1,5 +1,5 @@
 import { Response } from 'express';
-import { Doubt, Answer, User, StudentProfile, Escalation, Subject, FacultyAnalytics, HintHistory } from '../models/Schemas';
+import { Doubt, Answer, User, StudentProfile, Escalation, Subject, FacultyAnalytics, HintHistory, StudentProgress } from '../models/Schemas';
 import { AuthRequest } from '../middleware/auth';
 
 export const getStudentDashboardData = async (req: AuthRequest, res: Response) => {
@@ -26,6 +26,47 @@ export const getStudentDashboardData = async (req: AuthRequest, res: Response) =
       .sort({ createdAt: -1 })
       .limit(5);
 
+    // Compute detailed stats
+    const questionsAsked = await Doubt.countDocuments({ askerId: userId });
+    const answers = await Answer.find({ solverId: userId });
+    const questionsSolved = answers.filter(a => a.isAccepted || a.isTeacherVerified).length;
+    const acceptedAnswers = answers.filter(a => a.isAccepted).length;
+    const teacherApprovedAnswers = answers.filter(a => a.isTeacherVerified).length;
+    const topAnswers = answers.filter(a => (a.aiEvaluation?.score || 0) >= 90 || a.isTeacherVerified).length;
+    const knowledgeBaseContributions = answers.filter(a => a.knowledgeBaseStatus === 'saved').length;
+
+    const scoredAnswers = answers.filter(a => a.aiEvaluation && a.aiEvaluation.score !== undefined);
+    const avgAIScore = scoredAnswers.length > 0
+      ? Math.round(scoredAnswers.reduce((acc, a) => acc + (a.aiEvaluation?.score || 0), 0) / scoredAnswers.length)
+      : 0;
+
+    const contributionScore = (questionsAsked * 10) + (questionsSolved * 50) + (topAnswers * 100);
+
+    // Compute Leaderboard Rank
+    const allProfiles = await StudentProfile.find().sort({ xp: -1 });
+    const rank = allProfiles.findIndex(p => p.userId.toString() === userId?.toString()) + 1;
+
+    // Fetch Weekly Progress Records
+    const progressRecords = await StudentProgress.find({ student: userId })
+      .sort({ year: 1, weekNumber: 1 });
+
+    const statistics = {
+      questionsAsked,
+      questionsSolved,
+      answersSubmitted: answers.length,
+      acceptedAnswers,
+      teacherApprovedAnswers,
+      topAnswers,
+      knowledgeBaseContributions,
+      xp: profile.xp,
+      level: profile.level,
+      badges: profile.badges,
+      aiScore: avgAIScore,
+      contributionScore,
+      rank,
+      progress: progressRecords
+    };
+
     // Get subjects list
     const subjects = await Subject.find();
 
@@ -33,7 +74,8 @@ export const getStudentDashboardData = async (req: AuthRequest, res: Response) =
       profile,
       askedDoubts,
       solvedAnswers,
-      subjects
+      subjects,
+      statistics
     });
   } catch (error) {
     console.error('Student dashboard error:', error);
@@ -96,25 +138,12 @@ export const getTeacherDashboardData = async (req: AuthRequest, res: Response) =
       }
     });
 
-    // Handle case where some answers might not be explicitly populated
-    if (doubtsSolvedByPeers === 0 && resolvedDoubts > 0) {
-      // Mock/sensible default for demo/seeded data if populate fails or database is empty
-      doubtsSolvedByPeers = Math.round(resolvedDoubts * 0.85); // 85% peer solved
-      doubtsSolvedByTeachers = resolvedDoubts - doubtsSolvedByPeers;
-    }
-
-    // Workload saved metrics
-    const peerSolvedPercentage = totalDoubts > 0 ? Math.round((doubtsSolvedByPeers / totalDoubts) * 100) : 0;
-    const avgMinutesPerDoubt = 20; // Assume 20 minutes of faculty time saved per doubt solved by peer
-    const totalMinutesSaved = doubtsSolvedByPeers * avgMinutesPerDoubt;
-    const hoursSaved = parseFloat((totalMinutesSaved / 60).toFixed(1));
-
     // 3. Subject-wise analytics
     const subjects = await Subject.find();
     const subjectStats = await Promise.all(
       subjects.map(async (subj) => {
         const count = await Doubt.countDocuments({ subjectId: subj._id });
-        const solved = await Doubt.countDocuments({ subjectId: subj._id, status: 'resolved' });
+        const solved = await Doubt.countDocuments({ subjectId: subj._id, status: { $in: ['peer_solved', 'teacher_solved'] } });
         return {
           subjectName: subj.name,
           subjectCode: subj.code,
@@ -153,17 +182,44 @@ export const getTeacherDashboardData = async (req: AuthRequest, res: Response) =
       })
     );
 
-    // 5. Weekly trend metrics
-    // Return sample timeline for Recharts chart
-    const timelineData = [
-      { name: 'Mon', doubts: 12, peerSolved: 10, escalated: 2 },
-      { name: 'Tue', doubts: 19, peerSolved: 17, escalated: 2 },
-      { name: 'Wed', doubts: 15, peerSolved: 13, escalated: 2 },
-      { name: 'Thu', doubts: 22, peerSolved: 18, escalated: 4 },
-      { name: 'Fri', doubts: 25, peerSolved: 21, escalated: 4 },
-      { name: 'Sat', doubts: 10, peerSolved: 9, escalated: 1 },
-      { name: 'Sun', doubts: 8, peerSolved: 8, escalated: 0 }
-    ];
+    // 5. Weekly trend metrics (dynamic from database)
+    const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const timelineData = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      d.setHours(0, 0, 0, 0);
+      const startOfDay = d;
+      const endOfDay = new Date(d);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      const dayName = daysOfWeek[d.getDay()];
+
+      const doubtsCount = await Doubt.countDocuments({
+        createdAt: { $gte: startOfDay, $lte: endOfDay }
+      });
+      const peerSolvedCount = await Doubt.countDocuments({
+        createdAt: { $gte: startOfDay, $lte: endOfDay },
+        status: 'peer_solved'
+      });
+      const escalatedCount = await Doubt.countDocuments({
+        createdAt: { $gte: startOfDay, $lte: endOfDay },
+        status: 'escalated'
+      });
+
+      timelineData.push({
+        name: dayName,
+        doubts: doubtsCount,
+        peerSolved: peerSolvedCount,
+        escalated: escalatedCount
+      });
+    }
+
+    // Workload saved metrics
+    const peerSolvedPercentage = totalDoubts > 0 ? Math.round((doubtsSolvedByPeers / totalDoubts) * 100) : 0;
+    const avgMinutesPerDoubt = 20; // Assume 20 minutes of faculty time saved per doubt solved by peer
+    const totalMinutesSaved = doubtsSolvedByPeers * avgMinutesPerDoubt;
+    const hoursSaved = parseFloat((totalMinutesSaved / 60).toFixed(1));
 
     res.status(200).json({
       metrics: {
@@ -231,6 +287,66 @@ export const calculateWorkloadMetrics = async () => {
     averageResolutionTimeMinutes = 20; // Sensible fallback
   }
 
+  // Dynamic Timeline Items
+  const recentDoubts = await Doubt.find()
+    .sort({ createdAt: -1 })
+    .limit(5)
+    .populate('askerId', 'name')
+    .populate('subjectId', 'code');
+
+  const recentAnswers = await Answer.find()
+    .sort({ createdAt: -1 })
+    .limit(5)
+    .populate('solverId', 'name')
+    .populate({
+      path: 'doubtId',
+      populate: { path: 'subjectId', select: 'code' }
+    });
+
+  const recentEscalations = await Escalation.find()
+    .sort({ escalatedAt: -1 })
+    .limit(5)
+    .populate({
+      path: 'doubtId',
+      populate: { path: 'askerId', select: 'name' }
+    });
+
+  const timelineItems: any[] = [];
+
+  recentDoubts.forEach((d) => {
+    timelineItems.push({
+      type: 'doubt_asked',
+      title: 'New Doubt Asked',
+      time: d.createdAt,
+      message: `${(d.askerId as any)?.name || 'Student'} asked a doubt on "${d.title}" in ${(d.subjectId as any)?.code || 'GEN'}.`,
+      color: 'bg-indigo-505'
+    });
+  });
+
+  recentAnswers.forEach((ans) => {
+    timelineItems.push({
+      type: 'answer_submitted',
+      title: ans.isTeacherVerified ? 'Answer Verified by Faculty' : 'Answer Submitted by Peer',
+      time: ans.createdAt,
+      message: `${(ans.solverId as any)?.name || 'Student'} submitted an answer to "${(ans.doubtId as any)?.title || 'doubt'}".`,
+      color: ans.isTeacherVerified ? 'bg-emerald-500' : 'bg-purple-500'
+    });
+  });
+
+  recentEscalations.forEach((esc) => {
+    const doubt = esc.doubtId as any;
+    timelineItems.push({
+      type: 'doubt_escalated',
+      title: 'Doubt Escalated to Faculty',
+      time: esc.escalatedAt,
+      message: `Doubt "${doubt?.title || 'doubt'}" was escalated due to ${esc.reason.replace('-', ' ')}.`,
+      color: 'bg-amber-500'
+    });
+  });
+
+  timelineItems.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+  const activityTimeline = timelineItems.slice(0, 5);
+
   return {
     total,
     peerSolved,
@@ -243,7 +359,8 @@ export const calculateWorkloadMetrics = async () => {
     minutesSaved,
     hoursSaved,
     teacherInterventionRate: `${teacherInterventionRate.toFixed(1)}%`,
-    averageResolutionTimeMinutes
+    averageResolutionTimeMinutes,
+    activityTimeline
   };
 };
 
@@ -266,16 +383,7 @@ export const getWeeklyTrendData = async (req: AuthRequest, res: Response) => {
       .limit(6);
 
     if (analytics.length === 0) {
-      // Fallback Mock data
-      const mockWeeklyTrend = [
-        { week: 'Week 1', peerSolved: 5, aiHinted: 2, escalated: 8, workloadReduction: 46.7 },
-        { week: 'Week 2', peerSolved: 8, aiHinted: 4, escalated: 6, workloadReduction: 54.5 },
-        { week: 'Week 3', peerSolved: 12, aiHinted: 7, escalated: 4, workloadReduction: 67.9 },
-        { week: 'Week 4', peerSolved: 15, aiHinted: 9, escalated: 3, workloadReduction: 75.0 },
-        { week: 'Week 5', peerSolved: 18, aiHinted: 12, escalated: 2, workloadReduction: 81.1 },
-        { week: 'Week 6', peerSolved: 22, aiHinted: 14, escalated: 1, workloadReduction: 87.8 }
-      ];
-      return res.status(200).json(mockWeeklyTrend);
+      return res.status(200).json([]);
     }
 
     // Map FacultyAnalytics to the expected response structure
@@ -299,19 +407,7 @@ export const getTopicHeatmapData = async (req: AuthRequest, res: Response) => {
   try {
     const totalCount = await Doubt.countDocuments();
     if (totalCount === 0) {
-      const mockTopicHeatmap = [
-        { topic: 'Squeeze Theorem', count: 12, subject: 'Mathematics' },
-        { topic: 'LEFT JOIN & NULL values', count: 10, subject: 'Computer Science' },
-        { topic: 'Newtonian Friction force', count: 9, subject: 'Physics' },
-        { topic: 'Organic reaction mechanism', count: 7, subject: 'Chemistry' },
-        { topic: 'Mitosis division stages', count: 6, subject: 'Biology' },
-        { topic: 'Integrals by parts', count: 5, subject: 'Mathematics' },
-        { topic: 'Database indexing', count: 4, subject: 'Computer Science' },
-        { topic: 'Gravity equations', count: 4, subject: 'Physics' },
-        { topic: 'DNA replication', count: 3, subject: 'Biology' },
-        { topic: 'Acid-Base titration', count: 3, subject: 'Chemistry' }
-      ];
-      return res.status(200).json(mockTopicHeatmap);
+      return res.status(200).json([]);
     }
 
     const heatmap = await Doubt.aggregate([

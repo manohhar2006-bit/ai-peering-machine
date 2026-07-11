@@ -107,48 +107,56 @@ export const Leaderboard: React.FC = () => {
       )}
 
       {/* Main Leaderboard Table */}
-      <div className="rounded-3xl border border-slate-100 bg-white overflow-hidden shadow-sm dark:bg-[#1E293B] dark:border-slate-800 transition-colors duration-300">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="bg-slate-50 border-b border-slate-100 dark:bg-[#0F172A] dark:border-slate-800 text-xs font-bold text-slate-450 uppercase tracking-wider">
-              <th className="py-4 px-6">Rank</th>
-              <th className="py-4 px-6">Solver</th>
-              <th className="py-4 px-6 text-center">Level</th>
-              <th className="py-4 px-6 text-center">Streak</th>
-              <th className="py-4 px-6 text-center">Resolved</th>
-              <th className="py-4 px-6 text-right">Points</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
-            {leaderboard.map((student) => (
-              <tr key={student.rank} className="hover:bg-slate-50/50 dark:hover:bg-slate-850/50 transition-colors">
-                <td className="py-4.5 px-6 font-extrabold text-slate-700 dark:text-slate-300">
-                  #{student.rank}
-                </td>
-                <td className="py-4.5 px-6">
-                  <div className="font-bold text-slate-800 dark:text-slate-100">{student.name}</div>
-                  <div className="text-xs text-slate-400">{student.email}</div>
-                </td>
-                <td className="py-4.5 px-6 text-center font-bold text-slate-700 dark:text-slate-350">
-                  Lvl {student.level}
-                </td>
-                <td className="py-4.5 px-6 text-center font-semibold">
-                  <div className="inline-flex items-center space-x-1 text-orange-555">
-                    <Flame className="h-4 w-4 fill-orange-500 text-orange-500" />
-                    <span>{student.streak} days</span>
-                  </div>
-                </td>
-                <td className="py-4.5 px-6 text-center font-semibold text-slate-500">
-                  {student.solvedCount} doubts
-                </td>
-                <td className="py-4.5 px-6 text-right font-black text-brand-600 dark:text-brand-400">
-                  {student.xp} XP
-                </td>
+      {leaderboard.length === 0 ? (
+        <div className="rounded-3xl bg-white border border-slate-100 p-12 text-center flex flex-col items-center justify-center space-y-3 dark:bg-[#1E293B] dark:border-slate-800 shadow-sm">
+          <Trophy className="h-12 w-12 text-slate-300 dark:text-slate-700" />
+          <h3 className="font-bold text-slate-800 dark:text-slate-100">No leaderboard rankings available</h3>
+          <p className="text-sm text-slate-455">Complete your first question to generate analytics.</p>
+        </div>
+      ) : (
+        <div className="rounded-3xl border border-slate-100 bg-white overflow-hidden shadow-sm dark:bg-[#1E293B] dark:border-slate-800 transition-colors duration-300">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-100 dark:bg-[#0F172A] dark:border-slate-800 text-xs font-bold text-slate-450 uppercase tracking-wider">
+                <th className="py-4 px-6">Rank</th>
+                <th className="py-4 px-6">Solver</th>
+                <th className="py-4 px-6 text-center">Level</th>
+                <th className="py-4 px-6 text-center">Streak</th>
+                <th className="py-4 px-6 text-center">Resolved</th>
+                <th className="py-4 px-6 text-right">Points</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
+              {leaderboard.map((student) => (
+                <tr key={student.rank} className="hover:bg-slate-50/50 dark:hover:bg-slate-850/50 transition-colors">
+                  <td className="py-4.5 px-6 font-extrabold text-slate-700 dark:text-slate-300">
+                    #{student.rank}
+                  </td>
+                  <td className="py-4.5 px-6">
+                    <div className="font-bold text-slate-800 dark:text-slate-100">{student.name}</div>
+                    <div className="text-xs text-slate-400">{student.email}</div>
+                  </td>
+                  <td className="py-4.5 px-6 text-center font-bold text-slate-700 dark:text-slate-355">
+                    Lvl {student.level}
+                  </td>
+                  <td className="py-4.5 px-6 text-center font-semibold">
+                    <div className="inline-flex items-center space-x-1 text-orange-555">
+                      <Flame className="h-4 w-4 fill-orange-500 text-orange-500" />
+                      <span>{student.streak} days</span>
+                    </div>
+                  </td>
+                  <td className="py-4.5 px-6 text-center font-semibold text-slate-500">
+                    {student.solvedCount} doubts
+                  </td>
+                  <td className="py-4.5 px-6 text-right font-black text-brand-600 dark:text-brand-400">
+                    {student.xp} XP
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 };

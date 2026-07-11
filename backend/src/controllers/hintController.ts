@@ -50,8 +50,17 @@ export const getRevealedHints = async (req: AuthRequest, res: Response) => {
   try {
     const { doubtId } = req.params;
     const userId = req.user?.userId;
+    const role = req.user?.role;
 
-    const history = await HintHistory.find({ doubtId, userId }).sort({ revealedAt: 1 });
+    let targetUserId = userId;
+    if (role === 'teacher') {
+      const doubt = await Doubt.findById(doubtId);
+      if (doubt) {
+        targetUserId = doubt.askerId as any;
+      }
+    }
+
+    const history = await HintHistory.find({ doubtId, userId: targetUserId }).sort({ revealedAt: 1 });
     
     const mapped = history.map(h => ({
       _id: h._id,

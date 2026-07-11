@@ -1,13 +1,46 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { LogOut, Flame, Trophy, Award, BookOpen, Sun, Moon, Monitor, ChevronDown } from 'lucide-react';
+import { LogOut, Flame, Trophy, Award, BookOpen, Sun, Moon, Monitor, ChevronDown, Sparkles, Volume2, VolumeX } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export const Navbar: React.FC = () => {
   const { user, studentProfile, logout } = useAuth();
   const { theme, setTheme } = useTheme();
   const [showThemeDropdown, setShowThemeDropdown] = useState(false);
+  const [aiStatus, setAiStatus] = useState<'online' | 'busy' | 'offline'>('online');
+  const [muted, setMuted] = useState(() => localStorage.getItem('gamification_sound_muted') === 'true');
+
+  useEffect(() => {
+    const handleAiStatus = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail) {
+        setAiStatus(customEvent.detail);
+      }
+    };
+    window.addEventListener('ai-status', handleAiStatus);
+    return () => {
+      window.removeEventListener('ai-status', handleAiStatus);
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleMuteChange = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      setMuted(customEvent.detail);
+    };
+    window.addEventListener('sound-mute-changed', handleMuteChange);
+    return () => {
+      window.removeEventListener('sound-mute-changed', handleMuteChange);
+    };
+  }, []);
+
+  const toggleMute = () => {
+    const newMuted = !muted;
+    setMuted(newMuted);
+    localStorage.setItem('gamification_sound_muted', String(newMuted));
+    window.dispatchEvent(new CustomEvent('sound-mute-changed', { detail: newMuted }));
+  };
 
   const nextLevelXp = studentProfile ? studentProfile.level * 500 : 500;
   const prevLevelXp = studentProfile ? (studentProfile.level - 1) * 500 : 0;
@@ -38,6 +71,21 @@ export const Navbar: React.FC = () => {
                 <Flame className="h-4.5 w-4.5 fill-amber-500 animate-pulse text-amber-500" />
                 <span>{studentProfile.streak} Day Streak</span>
               </div>
+
+              {/* Coins Counter */}
+              <div className="flex items-center space-x-1.5 rounded-full bg-yellow-50 px-3 py-1 text-sm font-bold text-yellow-600 border border-yellow-200 dark:bg-yellow-950/20 dark:border-yellow-900/40">
+                <span className="text-base leading-none">🪙</span>
+                <span>{studentProfile.coins || 0} Coins</span>
+              </div>
+
+              {/* Sound Toggle */}
+              <button
+                onClick={toggleMute}
+                title={muted ? "Unmute sounds" : "Mute sounds"}
+                className="h-8 w-8 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center justify-center hover:bg-slate-50 dark:hover:bg-[#0F172A] transition-all text-slate-500 dark:text-slate-400 active:scale-95"
+              >
+                {muted ? <VolumeX className="h-4.5 w-4.5 text-rose-500" /> : <Volume2 className="h-4.5 w-4.5 text-emerald-500" />}
+              </button>
 
               {/* XP Level Progress */}
               <div className="flex flex-col w-48 space-y-1">
@@ -70,6 +118,20 @@ export const Navbar: React.FC = () => {
               <span>FACULTY DASHBOARD</span>
             </div>
           )}
+
+          {/* AI Status Indicator */}
+          <div className="flex items-center space-x-1.5 rounded-full border px-2.5 py-1 text-xs font-bold transition-all bg-slate-50 border-slate-200 dark:bg-slate-900 dark:border-slate-800">
+            <span className={`h-2 w-2 rounded-full ${
+              aiStatus === 'online' 
+                ? 'bg-emerald-500 animate-pulse' 
+                : aiStatus === 'busy' 
+                ? 'bg-amber-500 animate-ping' 
+                : 'bg-rose-500 animate-pulse'
+            }`} />
+            <span className="text-slate-650 dark:text-slate-400">
+              {aiStatus === 'online' ? 'AI Online' : aiStatus === 'busy' ? 'AI Busy' : 'AI Unavailable'}
+            </span>
+          </div>
 
           {/* Theme Dropdown Toggle */}
           <div className="relative">

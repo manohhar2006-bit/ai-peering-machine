@@ -57,6 +57,8 @@ export interface IStudentProfile extends Document {
   xp: number;
   level: number;
   streak: number;
+  coins: number;
+  consecutiveSolves: number;
   lastActive: Date;
   badges: Array<{ badgeId: string; earnedAt: Date }>;
   subjectReputation: Map<string, number>; // subjectId -> points
@@ -69,6 +71,8 @@ const StudentProfileSchema = new Schema<IStudentProfile>({
   xp: { type: Number, default: 0 },
   level: { type: Number, default: 1 },
   streak: { type: Number, default: 0 },
+  coins: { type: Number, default: 0 },
+  consecutiveSolves: { type: Number, default: 0 },
   lastActive: { type: Date, default: Date.now },
   badges: [{
     badgeId: { type: String, required: true },
@@ -115,6 +119,11 @@ export const Subject = mongoose.model<ISubject>('Subject', SubjectSchema);
 export interface IDoubt extends Document {
   title: string;
   description: string;
+  question: string;
+  originalUploadUrl?: string;
+  extractedText?: string;
+  inputType: 'text' | 'image' | 'pdf';
+  keywords?: string[];
   fileUrl?: string;
   askerId: mongoose.Types.ObjectId;
   subjectId: mongoose.Types.ObjectId;
@@ -129,11 +138,25 @@ export interface IDoubt extends Document {
   peerResponderIds: mongoose.Types.ObjectId[];
   createdAt: Date;
   updatedAt: Date;
+  anonymousId?: string;
+  visibility?: 'public' | 'private';
+  views?: number;
+  allowCommunitySolutions: boolean;
+  hideCommunitySolutionsUntilFirstAttempt: boolean;
+  allowUnlimitedAttempts: boolean;
+  maxAttempts?: number | null;
+  allowAnswerEditing: boolean;
+  permittedStudentIds: mongoose.Types.ObjectId[];
 }
 
 const DoubtSchema = new Schema<IDoubt>({
   title: { type: String, required: true },
   description: { type: String, default: '' },
+  question: { type: String, required: true },
+  originalUploadUrl: { type: String },
+  extractedText: { type: String },
+  inputType: { type: String, enum: ['text', 'image', 'pdf'], default: 'text', required: true },
+  keywords: { type: [String], default: [] },
   fileUrl: { type: String },
   askerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
   subjectId: { type: Schema.Types.ObjectId, ref: 'Subject', required: true },
@@ -151,7 +174,16 @@ const DoubtSchema = new Schema<IDoubt>({
   hintsUsed: { type: Number, default: 0 },
   peerResponderIds: [{ type: Schema.Types.ObjectId, ref: 'User' }],
   createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now }
+  updatedAt: { type: Date, default: Date.now },
+  anonymousId: { type: String },
+  visibility: { type: String, enum: ['public', 'private'], default: 'public' },
+  views: { type: Number, default: 0 },
+  allowCommunitySolutions: { type: Boolean, default: true },
+  hideCommunitySolutionsUntilFirstAttempt: { type: Boolean, default: true },
+  allowUnlimitedAttempts: { type: Boolean, default: true },
+  maxAttempts: { type: Number, default: null },
+  allowAnswerEditing: { type: Boolean, default: true },
+  permittedStudentIds: [{ type: Schema.Types.ObjectId, ref: 'User', default: [] }]
 });
 
 export const Doubt = mongoose.model<IDoubt>('Doubt', DoubtSchema);
@@ -168,12 +200,44 @@ export interface IAnswer extends Document {
     usefulness: number; // 0-100
     score: number; // overall 0-100
     feedback: string;
+    logicalThinking?: number;
+    presentation?: number;
+    strengths?: string[];
+    weaknesses?: string[];
+    suggestions?: string[];
+    missingConcepts?: string[];
+    bestConceptsCovered?: string[];
+    whyStrong?: string;
   };
   pointsAwarded: number;
   isAccepted: boolean;
   isTeacherVerified: boolean;
   hintsUsedCount: number;
   createdAt: Date;
+  inputType?: 'text' | 'image' | 'pdf';
+  originalUploadUrl?: string;
+  extractedText?: string;
+  aiScore?: number;
+  confidence?: number;
+  knowledgeBaseStatus?: 'pending' | 'saved' | 'excluded';
+  anonymousId?: string;
+  visibility?: 'public' | 'private';
+  teacherApproved?: boolean;
+  isOwnerAnswer?: boolean;
+  isPublished?: boolean;
+  attemptNumber: number;
+  isLatest: boolean;
+  feedback: string;
+  versions: {
+    content: string;
+    inputType: 'text' | 'image' | 'pdf';
+    originalUploadUrl?: string;
+    extractedText?: string;
+    aiScore?: number;
+    aiEvaluation?: any;
+    pointsAwarded?: number;
+    createdAt: Date;
+  }[];
 }
 
 const AnswerSchema = new Schema<IAnswer>({
@@ -186,13 +250,45 @@ const AnswerSchema = new Schema<IAnswer>({
     completeness: { type: Number },
     usefulness: { type: Number },
     score: { type: Number },
-    feedback: { type: String }
+    feedback: { type: String },
+    logicalThinking: { type: Number },
+    presentation: { type: Number },
+    strengths: { type: [String] },
+    weaknesses: { type: [String] },
+    suggestions: { type: [String] },
+    missingConcepts: { type: [String] },
+    bestConceptsCovered: { type: [String] },
+    whyStrong: { type: String }
   },
   pointsAwarded: { type: Number, default: 0 },
   isAccepted: { type: Boolean, default: false },
   isTeacherVerified: { type: Boolean, default: false },
   hintsUsedCount: { type: Number, default: 0 },
-  createdAt: { type: Date, default: Date.now }
+  createdAt: { type: Date, default: Date.now },
+  inputType: { type: String, enum: ['text', 'image', 'pdf'], default: 'text' },
+  originalUploadUrl: { type: String },
+  extractedText: { type: String },
+  aiScore: { type: Number },
+  confidence: { type: Number, default: 0 },
+  knowledgeBaseStatus: { type: String, enum: ['pending', 'saved', 'excluded'], default: 'pending' },
+  anonymousId: { type: String },
+  visibility: { type: String, enum: ['public', 'private'], default: 'public' },
+  teacherApproved: { type: Boolean, default: false },
+  isOwnerAnswer: { type: Boolean, default: false },
+  isPublished: { type: Boolean, default: false },
+  attemptNumber: { type: Number, default: 1 },
+  isLatest: { type: Boolean, default: true },
+  feedback: { type: String, default: '' },
+  versions: [{
+    content: { type: String, required: true },
+    inputType: { type: String, enum: ['text', 'image', 'pdf'], default: 'text' },
+    originalUploadUrl: { type: String },
+    extractedText: { type: String },
+    aiScore: { type: Number },
+    aiEvaluation: { type: Schema.Types.Mixed },
+    pointsAwarded: { type: Number, default: 0 },
+    createdAt: { type: Date, default: Date.now }
+  }]
 });
 
 export const Answer = mongoose.model<IAnswer>('Answer', AnswerSchema);

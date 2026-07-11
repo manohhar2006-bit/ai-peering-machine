@@ -87,47 +87,29 @@ export const TeacherDashboard: React.FC = () => {
       setActiveRoomsCount(rooms.filter((r: any) => r.isActive).length);
     } catch (err) {
       console.error('Failed to load teacher dashboard data:', err);
-      setError('Failed to retrieve analytics data from server. Utilizing simulated fallbacks.');
+      setError('Failed to retrieve analytics data from server.');
       
-      // Fallback sensible defaults
       setMetricsData({
-        total: 10,
-        peerSolved: 5,
-        aiHinted: 2,
-        escalated: 2,
-        teacherSolved: 1,
-        open: 1,
-        workloadReduction: '70.0%',
-        workloadReductionPercent: 70.0,
-        minutesSaved: 35,
-        hoursSaved: 0.6,
-        teacherInterventionRate: '20.0%',
-        averageResolutionTimeMinutes: 20
+        total: 0,
+        peerSolved: 0,
+        aiHinted: 0,
+        escalated: 0,
+        teacherSolved: 0,
+        open: 0,
+        workloadReduction: '0.0%',
+        workloadReductionPercent: 0.0,
+        minutesSaved: 0,
+        hoursSaved: 0,
+        teacherInterventionRate: '0.0%',
+        averageResolutionTimeMinutes: 0
       });
-      setWeeklyTrendData([
-        { week: 'Week 1', peerSolved: 5, aiHinted: 2, escalated: 8, workloadReduction: 46.7 },
-        { week: 'Week 2', peerSolved: 8, aiHinted: 4, escalated: 6, workloadReduction: 54.5 },
-        { week: 'Week 3', peerSolved: 12, aiHinted: 7, escalated: 4, workloadReduction: 67.9 },
-        { week: 'Week 4', peerSolved: 15, aiHinted: 9, escalated: 3, workloadReduction: 75.0 },
-        { week: 'Week 5', peerSolved: 18, aiHinted: 12, escalated: 2, workloadReduction: 81.1 },
-        { week: 'Week 6', peerSolved: 22, aiHinted: 14, escalated: 1, workloadReduction: 87.8 }
-      ]);
-      setHeatmapData([
-        { topic: 'Squeeze Theorem', count: 12, subject: 'Mathematics' },
-        { topic: 'LEFT JOIN & NULL values', count: 10, subject: 'Computer Science' },
-        { topic: 'Newtonian Friction force', count: 9, subject: 'Physics' },
-        { topic: 'Organic reaction mechanism', count: 7, subject: 'Chemistry' },
-        { topic: 'Mitosis division stages', count: 6, subject: 'Biology' }
-      ]);
-
-      setStudentCount(8);
-      setSlowLearnersCount(3);
-      setStrugglingStudents([
-        { id: '1', name: 'Ravi Kumar', rollNumber: 'CS001', section: 'CSE-A', performanceLevel: 'slow' },
-        { id: '2', name: 'Sneha Reddy', rollNumber: 'CS004', section: 'CSE-A', performanceLevel: 'slow' },
-        { id: '3', name: 'Ananya Das', rollNumber: 'CS006', section: 'CSE-B', performanceLevel: 'slow' }
-      ]);
-      setActiveRoomsCount(1);
+      setWeeklyTrendData([]);
+      setHeatmapData([]);
+      setEscalations([]);
+      setStudentCount(0);
+      setSlowLearnersCount(0);
+      setStrugglingStudents([]);
+      setActiveRoomsCount(0);
     } finally {
       setLoading(false);
     }
@@ -485,48 +467,20 @@ export const TeacherDashboard: React.FC = () => {
           </div>
 
           <div className="relative border-l-2 border-slate-100 dark:border-slate-800 ml-3 space-y-6">
-            {/* Timeline Item 1 */}
-            <div className="relative pl-6">
-              <span className="absolute -left-[9px] top-1.5 h-4 w-4 rounded-full border-2 border-white dark:border-[#1E293B] bg-emerald-500 shadow-sm" />
-              <div className="text-[10px] text-slate-400 font-bold uppercase">10:30 AM</div>
-              <h4 className="font-extrabold text-xs text-slate-800 dark:text-slate-200 mt-0.5">Doubt Resolved by Peer</h4>
-              <p className="text-xs text-slate-500 mt-1">
-                Priya Sharma resolved Ravi Kumar's doubt on "Pointers memory allocation" in DBMS.
-              </p>
-            </div>
-
-            {/* Timeline Item 2 */}
-            {slowLearnersCount > 0 && (
-              <div className="relative pl-6">
-                <span className="absolute -left-[9px] top-1.5 h-4 w-4 rounded-full border-2 border-white dark:border-[#1E293B] bg-rose-500 shadow-sm" />
-                <div className="text-[10px] text-slate-400 font-bold uppercase">11:15 AM</div>
-                <h4 className="font-extrabold text-xs text-slate-850 dark:text-slate-205 mt-0.5">Remediation Alert</h4>
-                <p className="text-xs text-slate-500 mt-1">
-                  {strugglingStudents[0]?.name || 'Ravi Kumar'} flagged as slow learner (Weak topics: {strugglingStudents[0]?.weakTopics?.join(', ') || 'Recursion'}).
-                </p>
-              </div>
-            )}
-
-            {/* Timeline Item 3 */}
-            <div className="relative pl-6">
-              <span className="absolute -left-[9px] top-1.5 h-4 w-4 rounded-full border-2 border-white dark:border-[#1E293B] bg-indigo-500 shadow-sm" />
-              <div className="text-[10px] text-slate-400 font-bold uppercase">02:15 PM</div>
-              <h4 className="font-extrabold text-xs text-slate-800 dark:text-slate-200 mt-0.5">AI Hint Dispatched</h4>
-              <p className="text-xs text-slate-500 mt-1">
-                Gemini suggested a structured hint to Sneha Reddy on "Deadlock conditions" in OS.
-              </p>
-            </div>
-
-            {/* Timeline Item 4 */}
-            {escalations.length > 0 && (
-              <div className="relative pl-6">
-                <span className="absolute -left-[9px] top-1.5 h-4 w-4 rounded-full border-2 border-white dark:border-[#1E293B] bg-amber-500 shadow-sm" />
-                <div className="text-[10px] text-slate-400 font-bold uppercase">03:45 PM</div>
-                <h4 className="font-extrabold text-xs text-amber-605 dark:text-amber-400 mt-0.5">Doubt Escalated to Teacher</h4>
-                <p className="text-xs text-slate-500 mt-1">
-                  Doubt "{escalations[0]?.title}" has exceeded the peer resolution timer and is escalated to you.
-                </p>
-              </div>
+            {!metricsData?.activityTimeline || metricsData.activityTimeline.length === 0 ? (
+              <div className="text-xs text-slate-400 py-4 font-semibold">No activity available yet.</div>
+            ) : (
+              metricsData.activityTimeline.map((item: any, idx: number) => {
+                const formattedTime = new Date(item.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                return (
+                  <div key={idx} className="relative pl-6">
+                    <span className={`absolute -left-[9px] top-1.5 h-4 w-4 rounded-full border-2 border-white dark:border-[#1E293B] ${item.color || 'bg-slate-400'} shadow-sm`} />
+                    <div className="text-[10px] text-slate-400 font-bold uppercase">{formattedTime}</div>
+                    <h4 className="font-extrabold text-xs text-slate-800 dark:text-slate-200 mt-0.5">{item.title}</h4>
+                    <p className="text-xs text-slate-500 mt-1">{item.message}</p>
+                  </div>
+                );
+              })
             )}
           </div>
         </div>
@@ -626,108 +580,132 @@ export const TeacherDashboard: React.FC = () => {
         <div className="rounded-3xl border border-slate-100 bg-white p-6 shadow-premium dark:bg-slate-900 dark:border-slate-850 flex flex-col space-y-4">
           <h3 className="text-base font-bold text-slate-805 dark:text-slate-100">Doubt Resolution Breakdown</h3>
           <div className="h-64 w-full relative flex items-center justify-center text-xs">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={formattedPieData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={85}
-                  paddingAngle={5}
-                  dataKey="value"
-                  label={({ name, percent }) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`}
-                >
-                  {formattedPieData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  formatter={(value) => `${value} doubts`}
-                  contentStyle={{
-                    backgroundColor: isDark ? '#1E293B' : '#ffffff',
-                    borderColor: isDark ? '#334155' : '#e2e8f0',
-                    color: isDark ? '#f1f5f9' : '#0f172a'
-                  }}
-                />
-                <Legend verticalAlign="bottom" height={36} iconType="circle" />
-              </PieChart>
-            </ResponsiveContainer>
+            {formattedPieData.length === 0 ? (
+              <div className="text-xs text-slate-400 font-semibold bg-slate-50/50 dark:bg-slate-850/10 w-full h-full flex items-center justify-center rounded-2xl">
+                No activity available yet.
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={formattedPieData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={85}
+                    paddingAngle={5}
+                    dataKey="value"
+                    label={({ name, percent }) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`}
+                  >
+                    {formattedPieData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(value) => `${value} doubts`}
+                    contentStyle={{
+                      backgroundColor: isDark ? '#1E293B' : '#ffffff',
+                      borderColor: isDark ? '#334155' : '#e2e8f0',
+                      color: isDark ? '#f1f5f9' : '#0f172a'
+                    }}
+                  />
+                  <Legend verticalAlign="bottom" height={36} iconType="circle" />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </div>
 
         {/* Chart 2 - Bar Chart: Weekly Workload Trend */}
         <div className="rounded-3xl border border-slate-100 bg-white p-6 shadow-premium dark:bg-slate-900 dark:border-slate-850 flex flex-col space-y-4">
           <h3 className="text-base font-bold text-slate-805 dark:text-slate-100">Weekly Workload Trend</h3>
-          <div className="h-64 w-full text-xs">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={weeklyTrendData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDark ? '#334155' : '#e2e8f0'} />
-                <XAxis dataKey="week" stroke={isDark ? '#94a3b8' : '#64748b'} />
-                <YAxis stroke={isDark ? '#94a3b8' : '#64748b'} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: isDark ? '#1E293B' : '#ffffff',
-                    borderColor: isDark ? '#334155' : '#e2e8f0',
-                    color: isDark ? '#f1f5f9' : '#0f172a'
-                  }}
-                />
-                <Legend verticalAlign="bottom" height={36} />
-                <Bar dataKey="peerSolved" fill="#10b981" name="Peer Solved" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="aiHinted" fill="#8b5cf6" name="AI Hinted" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="escalated" fill="#f97316" name="Escalated" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+          <div className="h-64 w-full text-xs flex items-center justify-center">
+            {weeklyTrendData.length === 0 ? (
+              <div className="text-xs text-slate-400 font-semibold bg-slate-50/50 dark:bg-slate-850/10 w-full h-full flex items-center justify-center rounded-2xl">
+                No weekly activity yet.
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={weeklyTrendData}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDark ? '#334155' : '#e2e8f0'} />
+                  <XAxis dataKey="week" stroke={isDark ? '#94a3b8' : '#64748b'} />
+                  <YAxis stroke={isDark ? '#94a3b8' : '#64748b'} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: isDark ? '#1E293B' : '#ffffff',
+                      borderColor: isDark ? '#334155' : '#e2e8f0',
+                      color: isDark ? '#f1f5f9' : '#0f172a'
+                    }}
+                  />
+                  <Legend verticalAlign="bottom" height={36} />
+                  <Bar dataKey="peerSolved" fill="#10b981" name="Peer Solved" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="aiHinted" fill="#8b5cf6" name="AI Hinted" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="escalated" fill="#f97316" name="Escalated" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </div>
 
         {/* Chart 3 - Line Chart: Faculty Time Saved Per Week */}
         <div className="rounded-3xl border border-slate-100 bg-white p-6 shadow-premium dark:bg-slate-900 dark:border-slate-850 flex flex-col space-y-4">
           <h3 className="text-base font-bold text-slate-805 dark:text-slate-100">Faculty Time Saved Per Week</h3>
-          <div className="h-64 w-full text-xs">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={weeklyTrendData.map(d => ({ ...d, minutesSaved: (d.peerSolved + d.aiHinted) * 5 }))}>
-                <defs>
-                  <linearGradient id="colorSaved" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#14b8a6" stopOpacity={0.2} />
-                    <stop offset="95%" stopColor="#14b8a6" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDark ? '#334155' : '#e2e8f0'} />
-                <XAxis dataKey="week" stroke={isDark ? '#94a3b8' : '#64748b'} />
-                <YAxis stroke={isDark ? '#94a3b8' : '#64748b'} label={{ value: 'Minutes', angle: -90, position: 'insideLeft' }} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: isDark ? '#1E293B' : '#ffffff',
-                    borderColor: isDark ? '#334155' : '#e2e8f0',
-                    color: isDark ? '#f1f5f9' : '#0f172a'
-                  }}
-                />
-                <Area type="monotone" dataKey="minutesSaved" stroke="#14b8a6" strokeWidth={2} fillOpacity={1} fill="url(#colorSaved)" name="Minutes Saved" dot={{ r: 4 }} />
-              </AreaChart>
-            </ResponsiveContainer>
+          <div className="h-64 w-full text-xs flex items-center justify-center">
+            {weeklyTrendData.length === 0 ? (
+              <div className="text-xs text-slate-400 font-semibold bg-slate-50/50 dark:bg-slate-850/10 w-full h-full flex items-center justify-center rounded-2xl">
+                No weekly activity yet.
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={weeklyTrendData.map(d => ({ ...d, minutesSaved: (d.peerSolved + d.aiHinted) * 5 }))}>
+                  <defs>
+                    <linearGradient id="colorSaved" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#14b8a6" stopOpacity={0.2} />
+                      <stop offset="95%" stopColor="#14b8a6" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDark ? '#334155' : '#e2e8f0'} />
+                  <XAxis dataKey="week" stroke={isDark ? '#94a3b8' : '#64748b'} />
+                  <YAxis stroke={isDark ? '#94a3b8' : '#64748b'} label={{ value: 'Minutes', angle: -90, position: 'insideLeft' }} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: isDark ? '#1E293B' : '#ffffff',
+                      borderColor: isDark ? '#334155' : '#e2e8f0',
+                      color: isDark ? '#f1f5f9' : '#0f172a'
+                    }}
+                  />
+                  <Area type="monotone" dataKey="minutesSaved" stroke="#14b8a6" strokeWidth={2} fillOpacity={1} fill="url(#colorSaved)" name="Minutes Saved" dot={{ r: 4 }} />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </div>
 
         {/* Chart 4 - Horizontal Bar Chart: Most Repeated Doubt Topics */}
         <div className="rounded-3xl border border-slate-100 bg-white p-6 shadow-premium dark:bg-slate-900 dark:border-slate-850 flex flex-col space-y-4">
           <h3 className="text-base font-bold text-slate-805 dark:text-slate-100">Most Repeated Doubt Topics (Top 10)</h3>
-          <div className="h-64 w-full text-xs">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={heatmapData} layout="vertical" margin={{ left: 30, right: 30 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={isDark ? '#334155' : '#e2e8f0'} />
-                <XAxis type="number" stroke={isDark ? '#94a3b8' : '#64748b'} />
-                <YAxis dataKey="topic" type="category" width={100} stroke={isDark ? '#94a3b8' : '#64748b'} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: isDark ? '#1E293B' : '#ffffff',
-                    borderColor: isDark ? '#334155' : '#e2e8f0',
-                    color: isDark ? '#f1f5f9' : '#0f172a'
-                  }}
-                />
-                <Bar dataKey="count" fill="#4f46e5" name="Queries Asked" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+          <div className="h-64 w-full text-xs flex items-center justify-center">
+            {heatmapData.length === 0 ? (
+              <div className="text-xs text-slate-400 font-semibold bg-slate-50/50 dark:bg-slate-850/10 w-full h-full flex items-center justify-center rounded-2xl">
+                No doubts submitted.
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={heatmapData} layout="vertical" margin={{ left: 30, right: 30 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={isDark ? '#334155' : '#e2e8f0'} />
+                  <XAxis type="number" stroke={isDark ? '#94a3b8' : '#64748b'} />
+                  <YAxis dataKey="topic" type="category" width={100} stroke={isDark ? '#94a3b8' : '#64748b'} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: isDark ? '#1E293B' : '#ffffff',
+                      borderColor: isDark ? '#334155' : '#e2e8f0',
+                      color: isDark ? '#f1f5f9' : '#0f172a'
+                    }}
+                  />
+                  <Bar dataKey="count" fill="#4f46e5" name="Queries Asked" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </div>
       </div>

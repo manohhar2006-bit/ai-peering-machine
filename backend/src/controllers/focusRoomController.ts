@@ -1479,31 +1479,108 @@ export const submitFocusRoomAnswer = async (req: AuthRequest, res: Response) => 
     // Evaluate using Gemini
     const evaluation = await geminiService.evaluateAnswer(question.questionText, answerText);
 
-    // If correct, award XP
-    if (evaluation.verdict === 'correct') {
-      const xpToAward = evaluation.xpAwarded || 20;
+    const isCorrect = evaluation.verdict === 'correct';
+    let gamificationResult = { xpGained: 0, coinsGained: 0, levelUp: false, newLevel: 1 };
+    let streakMessage = '';
+    let streakBonusXP = 0;
+    let currentStreak = 0;
+
+    // Load or create student profile
+    const profile = await StudentProfile.findOne({ userId: studentId }) || new StudentProfile({ userId: studentId });
+
+    if (isCorrect) {
+      profile.consecutiveSolves = (profile.consecutiveSolves || 0) + 1;
+      currentStreak = profile.consecutiveSolves;
+
+      const diff = (question.difficulty || 'medium').toLowerCase();
+      const DIFFICULTY_POINTS: Record<string, number> = {
+        easy: 10,
+        medium: 20,
+        hard: 35,
+        expert: 50
+      };
+      const basePoints = DIFFICULTY_POINTS[diff] || 20;
+
+      let points = basePoints;
+      const coins = basePoints;
+      let reason = `Solved focus room question (${diff})`;
+
+      // Streak milestones
+      if (currentStreak === 3) {
+        streakBonusXP = 10;
+        streakMessage = "🔥 3 Question Streak";
+      } else if (currentStreak === 5) {
+        streakBonusXP = 20;
+        streakMessage = "⚡ Combo ×5";
+      } else if (currentStreak === 10) {
+        streakBonusXP = 40;
+        streakMessage = "🌟 Excellent Work!";
+      } else if (currentStreak > 5 && currentStreak % 5 === 0) {
+        streakBonusXP = 30;
+        streakMessage = `⚡ Combo ×${currentStreak}`;
+      } else if (currentStreak >= 3) {
+        streakMessage = "🌟 Excellent Work!";
+      }
+
+      if (streakBonusXP > 0) {
+        points += streakBonusXP;
+        reason += ` + Streak Bonus (${streakMessage})`;
+      }
 
       // 1. Update FocusRoomMember
       const member = await FocusRoomMember.findOne({ roomId, userId: studentId });
       if (member) {
-        member.xpEarned += xpToAward;
+        member.xpEarned += points;
         const percentPerQuestion = Math.round(100 / room.questions.length);
         member.progress = Math.min(100, (member.progress || 0) + percentPerQuestion);
         await member.save();
       }
 
-      // 2. Update StudentProfile
-      const profile = await StudentProfile.findOne({ userId: studentId });
-      if (profile) {
-        profile.xp += xpToAward;
-        profile.resolvedDoubtsCount += 1;
-        await profile.save();
+      // 2. Award points using GamificationService
+      const resG = await GamificationService.awardPoints(
+        studentId!,
+        points,
+        'solve',
+        reason,
+        undefined,
+        coins
+      );
+
+      // Save consecutiveSolves back to database
+      const updatedProfile = await StudentProfile.findOne({ userId: studentId });
+      if (updatedProfile) {
+        updatedProfile.consecutiveSolves = currentStreak;
+        await updatedProfile.save();
       }
+
+      gamificationResult = {
+        xpGained: points,
+        coinsGained: coins,
+        levelUp: resG.levelUp,
+        newLevel: resG.newLevel
+      };
+    } else {
+      profile.consecutiveSolves = 0;
+      await profile.save();
+
+      gamificationResult = {
+        xpGained: 0,
+        coinsGained: 0,
+        levelUp: false,
+        newLevel: profile.level
+      };
     }
 
     res.status(200).json({
       evaluation,
-      success: true
+      success: true,
+      xpGained: gamificationResult.xpGained,
+      coinsGained: gamificationResult.coinsGained,
+      levelUp: gamificationResult.levelUp,
+      newLevel: gamificationResult.newLevel,
+      streakCount: currentStreak,
+      streakMessage,
+      streakBonusXP
     });
   } catch (err) {
     console.error('Submit focus room answer error:', err);

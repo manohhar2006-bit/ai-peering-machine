@@ -1,55 +1,94 @@
+import mongoose from 'mongoose';
 import { Response } from 'express';
-import { Doubt, Subject, AIAnalysis, User, StudentProfile, Escalation, HintHistory } from '../models/Schemas';
+import { Doubt, Subject, AIAnalysis, User, StudentProfile, Escalation, HintHistory, Answer, RefereeEvaluation } from '../models/Schemas';
 import { AuthRequest } from '../middleware/auth';
 import { AIService } from '../services/aiService';
 import { GamificationService } from '../services/gamificationService';
+import * as geminiService from '../services/geminiService';
 
 export const createDoubt = async (req: AuthRequest, res: Response) => {
   try {
-    const { title, description = '', subjectCode, fileUrl } = req.body;
+    const {
+      question,
+      inputType = 'text',
+      originalUploadUrl,
+      extractedText,
+      subjectCode,
+      customSubject
+    } = req.body;
     const askerId = req.user?.userId;
 
-    if (!title || !subjectCode) {
-      return res.status(400).json({ message: 'Title and subject code are required' });
+    if (!question || (!subjectCode && !customSubject)) {
+      return res.status(400).json({ message: 'Question text and subject details are required' });
     }
 
-    // Resolve subject
-    const subject = await Subject.findOne({ code: subjectCode });
-    if (!subject) {
-      return res.status(404).json({ message: 'Subject not found' });
+    // Resolve or create subject
+    let subject;
+    if (customSubject && customSubject.trim() !== '') {
+      const trimmedSubject = customSubject.trim();
+      // Case-insensitive search
+      subject = await Subject.findOne({ name: { $regex: new RegExp(`^${trimmedSubject}$`, 'i') } });
+      if (!subject) {
+        // Create a unique uppercase subject code
+        const generatedCode = 'SUB-' + trimmedSubject.replace(/[^a-zA-Z0-9]/g, '').substring(0, 8).toUpperCase() + '-' + Math.floor(100 + Math.random() * 900);
+        subject = new Subject({
+          name: trimmedSubject,
+          code: generatedCode,
+          description: `Custom subject entered by student.`
+        });
+        await subject.save();
+      }
+    } else if (subjectCode) {
+      subject = await Subject.findOne({ code: subjectCode });
     }
+
+    if (!subject) {
+      return res.status(404).json({ message: 'Subject not resolved' });
+    }
+
+    // Generate title (compatibility) and description
+    const title = question.length > 80 ? question.substring(0, 80) + '...' : question;
+    const description = question;
+
+    // Generate stable anonymousId for asker
+    const anonNum = parseInt(askerId!.toString().slice(-4), 16) % 1000;
+    const anonymousId = `Student #${anonNum}`;
 
     // 1. Save initial doubt
     const doubt = new Doubt({
       title,
       description,
-      fileUrl,
+      question,
+      inputType,
+      originalUploadUrl,
+      extractedText,
+      fileUrl: originalUploadUrl, // sync for backwards compatibility
       askerId,
       subjectId: subject._id,
-      status: 'open'
+      status: 'open',
+      anonymousId
     });
     await doubt.save();
 
-    // 2. Invoke AI analysis
-    const analysisResult = await AIService.analyzeDoubt(title, description);
+    // 2. Invoke detailed AI analysis
+    const analysisResult = await geminiService.analyzeDoubtDetailed(question, subject.name);
 
     // 3. Save AI Analysis
     const aiAnalysis = new AIAnalysis({
       doubtId: doubt._id,
       topic: analysisResult.topic,
       difficulty: analysisResult.difficulty,
-      isPeerAnswerable: analysisResult.isPeerAnswerable,
+      isPeerAnswerable: analysisResult.difficulty !== 'hard',
       explanation: analysisResult.explanation
     });
     await aiAnalysis.save();
 
-    // Update doubt details with AI classifications
+    // Update doubt details with AI classifications and keywords
     doubt.topic = analysisResult.topic;
     doubt.difficulty = analysisResult.difficulty;
+    doubt.keywords = analysisResult.keywords || [];
     
     // 4. Peer Routing suggestions
-    // Recommend peer solvers who have high reputation or levels
-    // We'll query student profiles that have subject reputation in this subject
     const potentialPeers = await StudentProfile.find({
       userId: { $ne: askerId }
     })
@@ -83,7 +122,7 @@ export const createDoubt = async (req: AuthRequest, res: Response) => {
 
 export const getDoubtsFeed = async (req: AuthRequest, res: Response) => {
   try {
-    const { subjectCode, difficulty, status, recommendedOnly } = req.query;
+    const { subjectCode, difficulty, status, recommendedOnly, askerId } = req.query;
     const filter: any = {};
 
     if (subjectCode) {
@@ -109,12 +148,65 @@ export const getDoubtsFeed = async (req: AuthRequest, res: Response) => {
       filter.status = 'open';
     }
 
+    if (askerId) {
+      filter.askerId = askerId;
+    }
+
     const doubts = await Doubt.find(filter)
       .sort({ createdAt: -1 })
-      .populate('askerId', 'name email')
+      .populate('askerId', 'name email rollNumber section batch department')
       .populate('subjectId', 'name code');
 
-    res.status(200).json(doubts);
+    // Enrich doubts with answer statistics
+    const doubtsWithStats = await Promise.all(doubts.map(async (d) => {
+      const answers = await Answer.find({ doubtId: d._id });
+      const scoredAnswers = answers.filter((a: any) => a.aiScore !== undefined);
+      const avgScore = scoredAnswers.length > 0
+        ? Math.round(scoredAnswers.reduce((sum: number, a: any) => sum + (a.aiScore || 0), 0) / scoredAnswers.length)
+        : 0;
+
+      const dObj = d.toObject() as any;
+      dObj.answersCount = answers.length;
+      dObj.averageAiScore = avgScore;
+      return dObj;
+    }));
+
+    const isTeacher = req.user?.role === 'teacher';
+    if (isTeacher) {
+      return res.status(200).json(doubtsWithStats);
+    }
+
+    // Student Anonymization
+    const anonymizedDoubts = doubtsWithStats.map(doubtObj => {
+      const asker = doubtObj.askerId as any;
+      if (asker) {
+        const askerNum = parseInt(asker._id.toString().slice(-4), 16) % 1000;
+        const anonAskerId = doubtObj.anonymousId || `Student #${askerNum}`;
+        
+        if (asker._id.toString() === req.user?.userId) {
+          doubtObj.askerName = `${anonAskerId} (You)`;
+          doubtObj.askerId = {
+            _id: asker._id,
+            name: `${anonAskerId} (You)`
+          };
+        } else {
+          doubtObj.askerName = anonAskerId;
+          doubtObj.askerId = {
+            _id: asker._id,
+            name: anonAskerId
+          };
+        }
+      } else {
+        doubtObj.askerName = doubtObj.anonymousId || 'Anonymous Student';
+        doubtObj.askerId = {
+          _id: null,
+          name: doubtObj.anonymousId || 'Anonymous Student'
+        };
+      }
+      return doubtObj;
+    });
+
+    res.status(200).json(anonymizedDoubts);
   } catch (error) {
     console.error('Fetch doubts feed error:', error);
     res.status(500).json({ message: 'Failed to retrieve doubts feed' });
@@ -124,8 +216,9 @@ export const getDoubtsFeed = async (req: AuthRequest, res: Response) => {
 export const getDoubtDetails = async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const doubt = await Doubt.findById(id)
-      .populate('askerId', 'name email')
+    // Increment view count dynamically
+    const doubt = await Doubt.findByIdAndUpdate(id, { $inc: { views: 1 } }, { new: true })
+      .populate('askerId', 'name email rollNumber section batch department')
       .populate('subjectId', 'name code');
 
     if (!doubt) {
@@ -135,8 +228,46 @@ export const getDoubtDetails = async (req: AuthRequest, res: Response) => {
     const aiAnalysis = await AIAnalysis.findOne({ doubtId: doubt._id });
     const escalation = await Escalation.findOne({ doubtId: doubt._id, status: 'pending' });
 
+    const isTeacher = req.user?.role === 'teacher';
+    if (isTeacher) {
+      return res.status(200).json({
+        doubt,
+        aiAnalysis,
+        isEscalated: !!escalation,
+        escalationReason: escalation?.reason || null
+      });
+    }
+
+    // Student Anonymization
+    const doubtObj = doubt.toObject() as any;
+    const asker = doubtObj.askerId as any;
+    if (asker) {
+      const askerNum = parseInt(asker._id.toString().slice(-4), 16) % 1000;
+      const anonAskerId = doubtObj.anonymousId || `Student #${askerNum}`;
+      
+      if (asker._id.toString() === req.user?.userId) {
+        doubtObj.askerName = `${anonAskerId} (You)`;
+        doubtObj.askerId = {
+          _id: asker._id,
+          name: `${anonAskerId} (You)`
+        };
+      } else {
+        doubtObj.askerName = anonAskerId;
+        doubtObj.askerId = {
+          _id: asker._id,
+          name: anonAskerId
+        };
+      }
+    } else {
+      doubtObj.askerName = doubtObj.anonymousId || 'Anonymous Student';
+      doubtObj.askerId = {
+        _id: null,
+        name: doubtObj.anonymousId || 'Anonymous Student'
+      };
+    }
+
     res.status(200).json({
-      doubt,
+      doubt: doubtObj,
       aiAnalysis,
       isEscalated: !!escalation,
       escalationReason: escalation?.reason || null
@@ -221,5 +352,129 @@ export const updateDoubtStatus = async (req: AuthRequest, res: Response) => {
   } catch (error) {
     console.error('Update status error:', error);
     res.status(500).json({ message: 'Failed to update doubt status' });
+  }
+};
+
+export const updateDoubt = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { question, title, description, topic, difficulty } = req.body;
+    const userId = req.user?.userId;
+
+    const doubt = await Doubt.findById(id);
+    if (!doubt) {
+      return res.status(404).json({ message: 'Doubt not found' });
+    }
+
+    if (doubt.askerId.toString() !== userId?.toString()) {
+      return res.status(403).json({ message: 'Only the asker can update this doubt' });
+    }
+
+    if (question) doubt.question = question;
+    if (title) doubt.title = title;
+    if (description !== undefined) doubt.description = description;
+    if (topic) doubt.topic = topic;
+    if (difficulty) doubt.difficulty = difficulty;
+
+    doubt.updatedAt = new Date();
+    await doubt.save();
+
+    res.status(200).json({ message: 'Doubt updated successfully', doubt });
+  } catch (error) {
+    console.error('Update doubt error:', error);
+    res.status(500).json({ message: 'Failed to update doubt' });
+  }
+};
+
+export const deleteDoubt = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user?.userId;
+
+    const doubt = await Doubt.findById(id);
+    if (!doubt) {
+      return res.status(404).json({ message: 'Doubt not found' });
+    }
+
+    if (doubt.askerId.toString() !== userId?.toString()) {
+      return res.status(403).json({ message: 'Only the asker can delete this doubt' });
+    }
+
+    // Clean up all related documents
+    await Answer.deleteMany({ doubtId: id });
+    await AIAnalysis.deleteMany({ doubtId: id });
+    await Escalation.deleteMany({ doubtId: id });
+    await HintHistory.deleteMany({ doubtId: id });
+    await RefereeEvaluation.deleteMany({ doubtId: id });
+    await Doubt.findByIdAndDelete(id);
+
+    res.status(200).json({ message: 'Doubt deleted successfully' });
+  } catch (error) {
+    console.error('Delete doubt error:', error);
+    res.status(500).json({ message: 'Failed to delete doubt' });
+  }
+};
+
+export const updateDoubtSettings = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const {
+      allowCommunitySolutions,
+      hideCommunitySolutionsUntilFirstAttempt,
+      allowUnlimitedAttempts,
+      maxAttempts,
+      allowAnswerEditing
+    } = req.body;
+
+    const doubt = await Doubt.findById(id);
+    if (!doubt) {
+      return res.status(404).json({ message: 'Doubt not found' });
+    }
+
+    if (allowCommunitySolutions !== undefined) doubt.allowCommunitySolutions = allowCommunitySolutions;
+    if (hideCommunitySolutionsUntilFirstAttempt !== undefined) doubt.hideCommunitySolutionsUntilFirstAttempt = hideCommunitySolutionsUntilFirstAttempt;
+    if (allowUnlimitedAttempts !== undefined) doubt.allowUnlimitedAttempts = allowUnlimitedAttempts;
+    if (maxAttempts !== undefined) {
+      doubt.maxAttempts = maxAttempts === '' || maxAttempts === null ? null : Number(maxAttempts);
+    }
+    if (allowAnswerEditing !== undefined) doubt.allowAnswerEditing = allowAnswerEditing;
+
+    await doubt.save();
+
+    res.status(200).json({ message: 'Question settings updated successfully', doubt });
+  } catch (error) {
+    console.error('Update doubt settings error:', error);
+    res.status(500).json({ message: 'Failed to update question settings' });
+  }
+};
+
+export const grantStudentPermission = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { studentId } = req.body;
+
+    const doubt = await Doubt.findById(id);
+    if (!doubt) {
+      return res.status(404).json({ message: 'Doubt not found' });
+    }
+
+    if (!doubt.permittedStudentIds) {
+      doubt.permittedStudentIds = [];
+    }
+
+    const studentObjectId = new mongoose.Types.ObjectId(studentId);
+    const alreadyPermitted = doubt.permittedStudentIds.some(
+      (pid) => pid.toString() === studentId
+    );
+
+    if (!alreadyPermitted) {
+      doubt.permittedStudentIds.push(studentObjectId);
+      await doubt.save();
+    }
+
+    res.status(200).json({ message: 'Permission granted to student successfully', doubt });
+  } catch (error) {
+    console.error('Grant student permission error:', error);
+    res.status(500).json({ message: 'Failed to grant permission to student' });
   }
 };

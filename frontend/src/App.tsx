@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { Navbar } from './components/Navbar';
+import { RewardCelebration } from './components/RewardCelebration';
 import { Sidebar } from './components/Sidebar';
 import { Landing } from './pages/public/Landing';
 import { Login } from './pages/public/Login';
@@ -14,6 +15,8 @@ import { DoubtDetail } from './pages/student/DoubtDetail';
 import { Leaderboard } from './pages/student/Leaderboard';
 import { Rewards } from './pages/student/Rewards';
 import { Profile } from './pages/student/Profile';
+import { LearningHub } from './pages/student/LearningHub';
+import { LearningHubDoubtDetail } from './pages/student/LearningHubDoubtDetail';
 import { TeacherDashboard } from './pages/teacher/Dashboard';
 import { DoubtMonitoring } from './pages/teacher/DoubtMonitoring';
 import { EscalationQueue } from './pages/teacher/EscalationQueue';
@@ -60,12 +63,15 @@ const AppLayout: React.FC = () => {
   return (
     <div className="min-h-screen flex flex-col">
       <Navbar />
+      <RewardCelebration />
       <div className="flex flex-1">
         <Sidebar />
         <main className="flex-1 bg-[#F8FAFC] dark:bg-[#0F172A] transition-colors duration-300 min-h-[calc(100vh-4rem)]">
           <Routes>
             {/* Student Pages */}
             <Route path="/student/dashboard" element={<RequireAuth allowedRole="student"><StudentDashboard /></RequireAuth>} />
+            <Route path="/student/learning-hub" element={<RequireAuth allowedRole="student"><LearningHub /></RequireAuth>} />
+            <Route path="/student/learning-hub/doubt/:id" element={<RequireAuth allowedRole="student"><LearningHubDoubtDetail /></RequireAuth>} />
             <Route path="/ask-doubt" element={<RequireAuth allowedRole="student"><AskDoubt /></RequireAuth>} />
             <Route path="/feed" element={<RequireAuth allowedRole="student"><DoubtFeed /></RequireAuth>} />
             <Route path="/leaderboard" element={<RequireAuth><Leaderboard /></RequireAuth>} />

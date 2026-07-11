@@ -10,8 +10,9 @@ export class GamificationService {
     points: number,
     type: 'ask' | 'solve' | 'bonus_accepted' | 'bonus_first_correct' | 'streak',
     reason: string,
-    subjectId?: string
-  ): Promise<{ xpGained: number; levelUp: boolean; newLevel: number }> {
+    subjectId?: string,
+    coinsToAward: number = 0
+  ): Promise<{ xpGained: number; coinsGained: number; levelUp: boolean; newLevel: number }> {
     try {
       // Create the transaction
       const transaction = new PointTransaction({
@@ -30,6 +31,7 @@ export class GamificationService {
 
       const oldLevel = profile.level;
       profile.xp += points;
+      profile.coins = (profile.coins || 0) + coinsToAward;
       
       // Calculate new level: level = floor(xp / 500) + 1
       const newLevel = Math.floor(profile.xp / 500) + 1;
@@ -59,12 +61,13 @@ export class GamificationService {
 
       return {
         xpGained: points,
+        coinsGained: coinsToAward,
         levelUp,
         newLevel
       };
     } catch (error) {
       console.error('Error awarding points:', error);
-      return { xpGained: 0, levelUp: false, newLevel: 1 };
+      return { xpGained: 0, coinsGained: 0, levelUp: false, newLevel: 1 };
     }
   }
 

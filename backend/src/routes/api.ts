@@ -33,18 +33,24 @@ router.get('/subjects', authenticateToken, async (req, res) => {
 router.post('/doubts', authenticateToken, requireRole('student'), doubtController.createDoubt);
 router.get('/doubts', authenticateToken, doubtController.getDoubtsFeed);
 router.get('/doubts/:id', authenticateToken, doubtController.getDoubtDetails);
+router.put('/doubts/:id', authenticateToken, requireRole('student'), doubtController.updateDoubt);
+router.delete('/doubts/:id', authenticateToken, requireRole('student'), doubtController.deleteDoubt);
 router.post('/doubts/:id/escalate', authenticateToken, doubtController.escalateDoubt);
 router.patch('/doubts/:id/status', authenticateToken, doubtController.updateDoubtStatus);
+router.put('/doubts/:id/settings', authenticateToken, requireRole('teacher'), doubtController.updateDoubtSettings);
+router.post('/doubts/:id/grant-permission', authenticateToken, requireRole('teacher'), doubtController.grantStudentPermission);
 
 // Answer Routes
 router.post('/answers', authenticateToken, requireRole('student'), answerController.submitAnswer);
+router.get('/answers/my-solutions', authenticateToken, requireRole('student'), answerController.getMySolutions);
 router.get('/answers/doubt/:doubtId', authenticateToken, answerController.getDoubtAnswers);
 router.post('/answers/:id/accept', authenticateToken, requireRole('student'), answerController.acceptAnswer);
 router.post('/answers/:id/verify', authenticateToken, requireRole('teacher'), answerController.verifyAnswer);
+router.post('/answers/:id/decision', authenticateToken, requireRole('teacher'), answerController.teacherDecision);
 
 // Hint Routes
 router.post('/hints/request', authenticateToken, requireRole('student'), hintController.requestHint);
-router.get('/hints/revealed/:doubtId', authenticateToken, requireRole('student'), hintController.getRevealedHints);
+router.get('/hints/revealed/:doubtId', authenticateToken, hintController.getRevealedHints);
 
 // Analytics and Leaderboard Routes
 router.get('/leaderboard', authenticateToken, analyticsController.getLeaderboardData);

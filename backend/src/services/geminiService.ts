@@ -1,24 +1,126 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { Doubt, Answer } from '../models/Schemas';
 
 const genAI = new GoogleGenerativeAI(
   process.env.GEMINI_API_KEY || ""
 );
 
-let activeModelName = "gemini-1.5-flash";
+export class GeminiService {
+  private static maxRetries = parseInt(process.env.MAX_GEMINI_RETRIES || "3", 10);
+  private static timeoutMs = parseInt(process.env.GEMINI_TIMEOUT || "30000", 10);
+  private static modelName = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
-async function generateContent(prompt: string, retries = 1): Promise<any> {
-  try {
-    const modelInstance = genAI.getGenerativeModel({ model: activeModelName });
-    return await modelInstance.generateContent(prompt);
-  } catch (error: any) {
-    const errMsg = error?.message || String(error);
-    if (retries > 0 && errMsg.includes("gemini-1.5-flash") && errMsg.includes("not found")) {
-      console.warn("gemini-1.5-flash not found, falling back to gemini-2.5-flash");
-      activeModelName = "gemini-2.5-flash";
-      return await generateContent(prompt, retries - 1);
+  // Central execution method with Retry policy, Timeout, and Logging
+  static async executeWithRetry(requestType: string, prompt: string | any[]): Promise<any> {
+    let attempt = 0;
+    let delay = 2000; // start with 2s
+    const startTime = Date.now();
+
+    while (true) {
+      attempt++;
+      const attemptStartTime = Date.now();
+      try {
+        // Enforce Timeout via Promise.race
+        const apiCallPromise = (async () => {
+          const modelInstance = genAI.getGenerativeModel({ model: this.modelName });
+          return await modelInstance.generateContent(prompt as any);
+        })();
+
+        // Create a timeout promise that will reject after timeoutMs
+        let timeoutId: any;
+        const timeoutPromise = new Promise((_, reject) => {
+          timeoutId = setTimeout(() => {
+            reject(new Error("GEMINI_TIMEOUT_EXCEEDED"));
+          }, this.timeoutMs);
+        });
+
+        // Race them!
+        const result = await Promise.race([apiCallPromise, timeoutPromise]);
+        clearTimeout(timeoutId); // Clear timeout if apiCall succeeded
+
+        const responseTime = Date.now() - attemptStartTime;
+
+        // Log success
+        console.log(`[GEMINI SERVICE LOG] [${new Date().toISOString()}] RequestType=${requestType} Attempt=${attempt} Status=Success ResponseTime=${responseTime}ms`);
+        return result;
+
+      } catch (error: any) {
+        const responseTime = Date.now() - attemptStartTime;
+        const errMsg = error?.message || String(error);
+        const errStatus = error?.status || (errMsg === "GEMINI_TIMEOUT_EXCEEDED" ? 408 : 500);
+
+        // Log attempt failure
+        console.warn(`[GEMINI SERVICE LOG] [${new Date().toISOString()}] RequestType=${requestType} Attempt=${attempt} Status=Failure ErrorCode=${errStatus} Error="${errMsg}" ResponseTime=${responseTime}ms`);
+
+        // Check if retryable
+        const isRetryable = 
+          errStatus === 503 || 
+          errStatus === 429 || 
+          errStatus === 408 || 
+          errMsg.includes("experiencing high demand") || 
+          errMsg.includes("503") || 
+          errMsg.includes("429") ||
+          errMsg.includes("fetch failed") ||
+          errMsg.includes("timeout") ||
+          errMsg === "GEMINI_TIMEOUT_EXCEEDED";
+
+        if (isRetryable && attempt <= this.maxRetries) {
+          console.log(`[GEMINI SERVICE] Retrying in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          delay *= 2; // exponential backoff: 2s -> 4s -> 8s
+          continue;
+        }
+
+        // Final failure reached: Wrap in clean structured error format
+        const finalError = new Error(errMsg) as any;
+        finalError.status = errStatus;
+        finalError.requestType = requestType;
+        throw finalError;
+      }
     }
-    throw error;
   }
+
+  // AI Learning Path (Requirement 9)
+  static async generateLearningPath(studentStats: any, weakTopics: string[]): Promise<string> {
+    const prompt = `You are an expert AI academic advisor. Design a personalized study learning path for student with stats:
+${JSON.stringify(studentStats)}
+Weak Topics: ${weakTopics.join(', ')}
+Outline:
+1. Short term focus goals
+2. Concepts to study
+3. Practice milestones`;
+    const result = await this.executeWithRetry("AI_LEARNING_PATH", prompt);
+    return result.response.text().trim();
+  }
+}
+
+// Wrapper for backwards compatibility
+async function generateContent(prompt: string | any[], requestType: string = "General"): Promise<any> {
+  let resolvedType = requestType;
+  if (typeof prompt === 'string') {
+    const lowerPrompt = prompt.toLowerCase();
+    if (lowerPrompt.includes("evaluator") || lowerPrompt.includes("rubric") || (lowerPrompt.includes("correctness") && lowerPrompt.includes("clarity") && lowerPrompt.includes("presentation"))) {
+      resolvedType = "AI_EVALUATOR";
+    } else if (lowerPrompt.includes("referee") || lowerPrompt.includes("comparing answers") || lowerPrompt.includes("multiple student answers")) {
+      resolvedType = "AI_REFEREE";
+    } else if (lowerPrompt.includes("consensus") || lowerPrompt.includes("idealcombinedanswer")) {
+      resolvedType = "AI_CONSENSUS";
+    } else if (lowerPrompt.includes("ocr") || lowerPrompt.includes("character") || lowerPrompt.includes("pdf") || lowerPrompt.includes("handwriting")) {
+      resolvedType = "AI_OCR";
+    } else if (lowerPrompt.includes("hint") || lowerPrompt.includes("coach") || lowerPrompt.includes("assistant") || lowerPrompt.includes("follow-up")) {
+      resolvedType = "AI_COACH";
+    } else if (lowerPrompt.includes("practice questions") || lowerPrompt.includes("question generator") || lowerPrompt.includes("slow learner")) {
+      resolvedType = "AI_QUESTION_GENERATOR";
+    } else if (lowerPrompt.includes("weekly progress report") || lowerPrompt.includes("weekly report")) {
+      resolvedType = "AI_SUMMARY";
+    } else if (lowerPrompt.includes("student doubt") || lowerPrompt.includes("escalat") || lowerPrompt.includes("analyze this")) {
+      resolvedType = "AI_SUMMARY";
+    }
+  } else {
+    // Array prompt (e.g. OCR media)
+    resolvedType = "AI_OCR";
+  }
+  return await GeminiService.executeWithRetry(resolvedType, prompt);
 }
 
 function parseJSONSafely(text: string, fallback: any) {
@@ -28,6 +130,32 @@ function parseJSONSafely(text: string, fallback: any) {
   } catch (err) {
     console.error('Error parsing JSON from Gemini response:', err, 'Raw response:', text);
     return fallback;
+  }
+}
+
+export async function getKnowledgeBaseContext(doubtText: string): Promise<string> {
+  try {
+    const savedAnswers = await Answer.find({ knowledgeBaseStatus: 'saved' })
+      .limit(3)
+      .populate('doubtId');
+
+    if (!savedAnswers || savedAnswers.length === 0) {
+      return '';
+    }
+
+    let context = "\n\n--- RELEVANT KNOWLEDGE BASE CONTEXT (VERIFIED SOLUTIONS) ---\n";
+    savedAnswers.forEach((ans: any, i) => {
+      const dbDoubt = ans.doubtId;
+      if (dbDoubt) {
+        context += `Verified Solution #${i + 1} for Topic "${dbDoubt.topic || 'General'}":\n`;
+        context += `Question: ${dbDoubt.title}\n`;
+        context += `Verified Answer: ${ans.content}\n\n`;
+      }
+    });
+    return context;
+  } catch (error) {
+    console.error("Error in getKnowledgeBaseContext RAG query:", error);
+    return '';
   }
 }
 
@@ -84,8 +212,10 @@ export async function generateHints(doubtText: string, level: number) {
       return fallback;
     }
 
+    const ragContext = await getKnowledgeBaseContext(doubtText);
     const prompt = `You are a teaching assistant and AI Coach who NEVER gives direct answers or solutions.
 Student doubt: '${doubtText}'
+${ragContext}
 Requested Hint level: ${level} out of 6
 
 Please generate a progressive hint based on this 6-level hint ladder:
@@ -122,6 +252,8 @@ export async function generateFollowUpReply(doubtText: string, history: any[], q
       return fallback;
     }
 
+    const ragContext = await getKnowledgeBaseContext(doubtText);
+
     // Format history
     let historyStr = "";
     history.forEach((h, index) => {
@@ -140,6 +272,8 @@ Under NO circumstances should you directly solve the doubt or reveal the final a
 
 Original Doubt:
 '${doubtText}'
+
+${ragContext}
 
 Conversation History so far:
 ${historyStr}
@@ -174,6 +308,12 @@ export async function evaluateAnswer(doubtText: string, answerText: string) {
     weaknesses: [] as string[],
     suggestions: [] as string[],
     missingConcepts: [] as string[],
+    bestConceptsCovered: [] as string[],
+    whyStrong: "Review complete.",
+    topic: "General",
+    keywords: [] as string[],
+    difficulty: "medium" as const,
+    confidence: 80,
     xpAwarded: 10
   };
 
@@ -201,6 +341,8 @@ Evaluate this answer across FIVE dimensions (0-100 each):
 Overall score = weighted average:
 (Correctness×0.35 + Clarity×0.20 + Completeness×0.20 + LogicalThinking×0.15 + Presentation×0.10)
 
+Also extract the detected topic, relevant keywords, answer difficulty level, and evaluator confidence score.
+
 Return ONLY a valid JSON object with no markdown fences:
 {
   "verdict": "correct" | "partially_correct" | "incorrect",
@@ -215,8 +357,16 @@ Return ONLY a valid JSON object with no markdown fences:
   "weaknesses": string[] (2-4 specific areas to improve),
   "suggestions": string[] (2-3 actionable improvement tips),
   "missingConcepts": string[] (key concepts absent from the answer),
+  "bestConceptsCovered": string[] (key concepts explained correctly in the answer),
+  "whyStrong": string (1 qualitative sentence summarizing why this answer is strong),
+  "topic": string (detected specific topic of the doubt/answer),
+  "keywords": string[] (3-5 important tags or keywords),
+  "difficulty": "easy" | "medium" | "hard",
+  "confidence": number (evaluator confidence 0-100),
   "xpAwarded": number (20 if verdict=correct, 10 if partially_correct, 0 if incorrect)
 }
+
+If the overallScore is below 50, ensure each item in the "weaknesses" array describes a specific mistake or missing concept prefixed with "❌ " (e.g. "❌ Circular Wait condition is missing."), and each item in the "suggestions" array represents a clear actionable advice prefixed with "✓ " (e.g. "✓ Explain all four Coffman Conditions. Add a real-world example.").
 
 Be specific, constructive, and educationally valuable in your feedback.`;
 
@@ -229,6 +379,15 @@ Be specific, constructive, and educationally valuable in your feedback.`;
     // Normalise: keep legacy `score` field in sync with `overallScore`
     parsed.score = parsed.overallScore ?? parsed.score ?? 50;
     parsed.overallScore = parsed.score;
+
+    if (parsed.overallScore < 50) {
+      if (Array.isArray(parsed.weaknesses)) {
+        parsed.weaknesses = parsed.weaknesses.map((w: string) => w.trim().startsWith('❌') ? w.trim() : `❌ ${w.trim()}`);
+      }
+      if (Array.isArray(parsed.suggestions)) {
+        parsed.suggestions = parsed.suggestions.map((s: string) => s.trim().startsWith('✓') ? s.trim() : `✓ ${s.trim()}`);
+      }
+    }
     return parsed;
   } catch (error) {
     console.error("Gemini evaluateAnswer failed, returning fallback:", error);
@@ -474,9 +633,12 @@ export async function getGeneralExplanation(query: string, subject: string, topi
       return `Here is some general information about "${topic}" in ${subject}: Try checking your textbook for deadlock avoidance, resource allocation, and CPU scheduling.`;
     }
 
+    const ragContext = await getKnowledgeBaseContext(query || topic || subject || '');
     const prompt = `You are an expert AI Learning Assistant in an educational platform.
 The student is asking a question about the subject "${subject || 'General'}" and topic "${topic || 'General'}".
 Question: "${query}"
+
+${ragContext}
 
 Provide a clean, helpful, and technically accurate explanation. Limit your response to 200 words. Format with markdown if helpful.`;
 
@@ -487,3 +649,320 @@ Provide a clean, helpful, and technically accurate explanation. Limit your respo
     return "I'm sorry, I'm currently unable to answer your query. Please ask a classmate or check the focus room discussions!";
   }
 }
+
+export async function extractTextFromMedia(fileBuffer: Buffer, mimeType: string): Promise<string> {
+  try {
+    if (!process.env.GEMINI_API_KEY) {
+      console.warn("GEMINI_API_KEY is not defined, using mock fallback for extractTextFromMedia.");
+      return "Mock extracted question from uploaded file: What is the efficiency of a Carnot Engine operating between 500K and 300K?";
+    }
+
+    const result = await generateContent([
+      {
+        inlineData: {
+          data: fileBuffer.toString("base64"),
+          mimeType: mimeType
+        }
+      },
+      "You are a OCR AI assistant. Extract all text from this file (image or PDF). Specifically:\n1. Detect all text and characters, including handwriting if present.\n2. Extract all mathematical expressions, equations, and code accurately.\n3. Clean formatting, remove unnecessary spaces, and merge broken lines.\n4. Preserve the layout and structural formatting as much as possible.\n5. Return only the extracted text, without any additional explanations, intro/outro, or markdown code fences unless they are part of the extracted text. If no text is found, return an empty string."
+    ]);
+    return result.response.text().trim();
+  } catch (error) {
+    console.error("Gemini extractTextFromMedia failed:", error);
+    throw error;
+  }
+}
+
+export async function cleanPdfText(rawText: string): Promise<string> {
+  try {
+    if (!process.env.GEMINI_API_KEY) {
+      return rawText;
+    }
+
+    const prompt = `You are an educational AI assistant.
+A student uploaded a digital PDF, and we extracted this raw text:
+"${rawText}"
+
+Please clean up the text:
+1. Fix formatting, spacing, and typos if any.
+2. Merge broken sentences/lines and remove headers, footers, page numbers, or watermark text if they interrupt the flow of the question.
+3. Preserve math equations and programming code as formatting dictates.
+4. Return ONLY the cleaned question text, without any introduction, explanations, or wrapping markdown code fences.`;
+
+    const result = await generateContent(prompt);
+    return result.response.text().trim();
+  } catch (error) {
+    console.error("Gemini cleanPdfText failed, returning raw text:", error);
+    return rawText;
+  }
+}
+
+export async function analyzeDoubtDetailed(questionText: string, subjectName: string) {
+  const fallback = {
+    topic: "General Concept",
+    difficulty: "medium" as const,
+    keywords: [] as string[],
+    explanation: "Concept explanation temporarily unavailable."
+  };
+
+  try {
+    if (!process.env.GEMINI_API_KEY) {
+      return fallback;
+    }
+
+    const prompt = `You are an educational AI assistant.
+Analyze this student doubt:
+Question: "${questionText}"
+Subject: ${subjectName}
+
+Return ONLY a JSON object with:
+{
+  "topic": string (specific topic name, e.g. "Deadlock", "Limit Theorem", "SQL Joins"),
+  "difficulty": "easy" | "medium" | "hard",
+  "keywords": string[] (3-5 important search keywords or concept tags),
+  "explanation": string (2-3 lines explaining the underlying concept or background)
+}`;
+
+    const result = await generateContent(prompt);
+    const responseText = result.response.text();
+    return parseJSONSafely(responseText, fallback);
+  } catch (error) {
+    console.error("Gemini analyzeDoubtDetailed failed:", error);
+    return fallback;
+  }
+}
+
+export async function generateConsensusAnswer(doubtText: string, answers: string[]) {
+  const fallback = {
+    idealCombinedAnswer: "Consensus evaluation is temporarily unavailable.",
+    commonCorrectConcepts: [] as string[],
+    commonMistakes: [] as string[],
+    missingConcepts: [] as string[],
+    recommendedLearningResources: [] as string[]
+  };
+
+  try {
+    if (!process.env.GEMINI_API_KEY) {
+      return fallback;
+    }
+
+    const answersList = answers.map((a, idx) => `Answer ${idx + 1}:\n${a}`).join('\n\n---\n\n');
+
+    const prompt = `You are an educational AI expert analyzing student answers to synthesize a consensus model.
+    
+Original Question/Doubt:
+"${doubtText}"
+
+Submitted Answers:
+${answersList}
+
+Analyze all the submitted student answers. Synthesize the findings and generate a JSON response with:
+1. "idealCombinedAnswer": A comprehensive, clear, and ideal answer combining the best parts of the submitted solutions and correcting any errors.
+2. "commonCorrectConcepts": An array of concepts that the students generally got right across the answers.
+3. "commonMistakes": An array of mistakes or misconceptions found in one or more student answers.
+4. "missingConcepts": An array of key academic concepts that were omitted in all or most answers but are critical to fully understanding the solution.
+5. "recommendedLearningResources": An array of 2-3 specific topics, books, or online search keywords recommended to study this topic deeper.
+
+Return ONLY a valid JSON object with no markdown code fences:
+{
+  "idealCombinedAnswer": string,
+  "commonCorrectConcepts": string[],
+  "commonMistakes": string[],
+  "missingConcepts": string[],
+  "recommendedLearningResources": string[]
+}`;
+
+    const result = await generateContent(prompt);
+    const responseText = result.response.text();
+    return parseJSONSafely(responseText, fallback);
+  } catch (error) {
+    console.error("Gemini generateConsensusAnswer failed:", error);
+    return fallback;
+  }
+}
+
+export async function getCoachResponse(doubtText: string, subject: string, studentMessage: string, answerText?: string, history?: any[]) {
+  // Format history
+  let historyStr = "";
+  if (history && history.length > 0) {
+    history.forEach((h: any) => {
+      if (h.queryText && h.queryText.trim()) {
+        historyStr += `Student: ${h.queryText}\n`;
+      }
+      if (h.hintContent && h.hintContent.trim()) {
+        historyStr += `Coach: ${h.hintContent}\n`;
+      }
+    });
+  }
+
+  const prompt = `You are a professional educational AI Learning Coach.
+Your goal is to guide students to think independently, discover concepts, and improve their answers.
+Under NO circumstances should you directly solve the question/doubt or reveal the final solution.
+
+Doubt/Question Context:
+"${doubtText}"
+
+Subject: "${subject}"
+
+Conversation History:
+${historyStr}
+
+Latest Student Attempt/Answer (if any):
+"${answerText || "No answer submitted yet."}"
+
+Student Message:
+"${studentMessage}"
+
+Instructions:
+1. Determine the student's intent.
+   - If they are requesting a progressive Hint (e.g., "Hint 1", "Hint 2", "Hint 3" or similar):
+     - Identify which hint number (1, 2, or 3) they want.
+     - Enforce progressive hinting: Hint 1 must be revealed before Hint 2, and Hint 2 before Hint 3.
+     - Look at the Conversation History to see which Hint numbers (Hint 1, Hint 2, Hint 3) have already been given.
+     - If they request Hint 2 but Hint 1 hasn't been revealed, set "status" to "hint_blocked" and explain in "reply" that they must get Hint 1 first.
+     - If they request Hint 3 but Hint 2 hasn't been revealed, set "status" to "hint_blocked" and explain in "reply" that they must get Hint 2 first.
+     - If the requested hint is allowed, set "status" to "success" and generate it:
+       - Hint 1: General direction. Smallest possible clue. 2 sentences. End with a thinking question.
+       - Hint 2: Important concept. Mention concept/formula name. No calculations. Max 3 sentences. End with a thinking question.
+       - Hint 3: Nearly complete approach. Step-by-step approach. Do not solve.
+   - If they ask "Explain Concept" or want an explanation of the underlying topic/concept:
+     - Explain ONLY the underlying concept, NOT the answer.
+     - Use simple language, examples, analogies, small text diagrams (Markdown), step-by-step explanations.
+   - If they are submitting an answer or asking you to check their logic/review mistakes:
+     - Evaluate the submitted answer ("${answerText}").
+     - If correct: "Excellent work! Your logic is correct. You may improve clarity by [suggestions]..."
+     - If incorrect: Explain:
+       - ❌ Which sentence/part is incorrect.
+       - ❌ Which concept is misunderstood.
+       - ❌ Which important point is missing.
+       - ❌ Which logical step is wrong.
+       - Give improvement suggestions. Encourage: "Please improve your answer and upload it again."
+       - NEVER reveal the final correct answer or solution.
+   - If they ask general questions or seek Socratic guidance (e.g., "Where should I start?", "Am I thinking correctly?", "Guide me", etc.):
+     - Respond as a Socratic AI Coach. Ask questions to guide them to discover the answer themselves.
+
+2. Return ONLY a valid JSON object matching the following structure (no markdown fences, no extra text):
+{
+  "intent": "HINT" | "CONCEPT_EXPLANATION" | "ANSWER_REVIEW" | "GUIDANCE",
+  "status": "success" | "hint_blocked",
+  "reply": "your primary chatbot message response here. Formatted in Markdown.",
+  "followUpQuestion": "a Socratic question to guide the student's thinking (required for HINT, GUIDANCE, and CONCEPT_EXPLANATION)",
+  "verdict": "correct" | "partially_correct" | "incorrect" | "none", // only for ANSWER_REVIEW
+  "score": number, // 0-100, only for ANSWER_REVIEW
+  "hintNumber": number // 1, 2, or 3, only if a hint was successfully generated
+}
+`;
+
+  try {
+    const result = await generateContent(prompt);
+    const text = result.response.text();
+    const cleaned = text
+      .replace(/```json/gi, '')
+      .replace(/```/g, '')
+      .trim();
+    return JSON.parse(cleaned);
+  } catch (error: any) {
+    console.error("Gemini Coach parsing failed:", error);
+    try {
+      const result = await generateContent(prompt);
+      const text = result.response.text();
+      return {
+        intent: 'GUIDANCE',
+        status: 'success',
+        reply: text,
+        followUpQuestion: 'What do you think about this?',
+        verdict: 'none',
+        score: 0
+      };
+    } catch {
+      return {
+        intent: 'GUIDANCE',
+        status: 'success',
+        reply: "I encountered an error parsing the AI response. Let's try again conceptually.",
+        followUpQuestion: 'What do you think about this?',
+        verdict: 'none',
+        score: 0
+      };
+    }
+  }
+}
+
+export async function getDeepAnalysis(doubtText: string, subject: string) {
+  const prompt = `You are an expert educational analyst.
+
+Doubt: '${doubtText}'
+Subject: '${subject}'
+
+Give a complete deep analysis for a student who wants to understand this topic fully.
+Do NOT give the answer to the doubt.
+Only explain concepts and approach.
+
+Return ONLY this JSON (no extra text):
+{
+  "topic": "specific topic name",
+  "difficulty": "easy" | "medium" | "hard",
+  "keyConcepts": [
+    {
+      "concept": "concept name",
+      "explanation": "one line explanation"
+    }
+  ],
+  "learningObjectives": [
+    "objective 1",
+    "objective 2"
+  ],
+  "prerequisiteConcepts": [
+    "prerequisite 1",
+    "prerequisite 2"
+  ],
+  "recommendedApproach": [
+    "Step 1: ...",
+    "Step 2: ..."
+  ],
+  "commonMistakes": [
+    "mistake 1",
+    "mistake 2"
+  ],
+  "suggestedResources": [
+    "resource 1",
+    "resource 2"
+  ]
+}`;
+
+  const fallback = {
+    topic: "Core Concept",
+    difficulty: "medium" as const,
+    keyConcepts: [
+      { concept: "Problem Definition", explanation: "Understanding the problem parameters and variables." }
+    ],
+    learningObjectives: ["Identify the core problem characteristics", "Formulate a systematic solution strategy"],
+    prerequisiteConcepts: ["Basic concepts related to the subject area"],
+    recommendedApproach: [
+      "Step 1: Identify the given values and target variable",
+      "Step 2: Formulate the equations or logical rules",
+      "Step 3: Solve systematically and check boundary conditions"
+    ],
+    commonMistakes: [
+      "Misinterpreting the question parameters",
+      "Skipping intermediate verification steps"
+    ],
+    suggestedResources: [
+      "Standard textbook chapters on this topic",
+      "Socratic discussion boards"
+    ]
+  };
+
+  try {
+    const result = await generateContent(prompt);
+    const text = result.response.text();
+    const cleaned = text
+      .replace(/```json/gi, '')
+      .replace(/```/g, '')
+      .trim();
+    return JSON.parse(cleaned);
+  } catch (error) {
+    console.error("Gemini Deep Analysis parsing failed:", error);
+    return fallback;
+  }
+}
+

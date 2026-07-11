@@ -126,14 +126,20 @@ router.get('/student-profile/:studentId', async (req: AuthRequest, res: Response
     const profile = await StudentProfile.findOne({ userId: studentId });
 
     // Aggregate stats
-    const totalDoubts = await Doubt.countDocuments({ askerId: studentId });
-    const resolvedDoubts = await Doubt.countDocuments({ 
-      askerId: studentId, 
-      status: { $in: ['peer_solved', 'teacher_solved'] } 
-    });
-    const totalAnswers = await Answer.countDocuments({ solverId: studentId });
-    const correctAnswers = await Answer.countDocuments({ solverId: studentId, isAccepted: true });
+    const questionsAsked = await Doubt.countDocuments({ askerId: studentId });
+    const answers = await Answer.find({ solverId: studentId });
+    const questionsSolved = answers.filter(a => a.isAccepted || a.isTeacherVerified).length;
+    const acceptedAnswers = answers.filter(a => a.isAccepted).length;
+    const topAnswers = answers.filter(a => (a.aiEvaluation?.score || 0) >= 90 || a.isTeacherVerified).length;
+    const knowledgeBaseContributions = answers.filter(a => a.knowledgeBaseStatus === 'saved').length;
     const hintsUsed = await HintHistory.countDocuments({ userId: studentId, ladderIndex: { $gte: 0 } });
+
+    const scoredAnswers = answers.filter(a => a.aiEvaluation && a.aiEvaluation.score !== undefined);
+    const avgAIScore = scoredAnswers.length > 0
+      ? Math.round(scoredAnswers.reduce((acc, a) => acc + (a.aiEvaluation?.score || 0), 0) / scoredAnswers.length)
+      : 0;
+
+    const contributionScore = (questionsAsked * 10) + (questionsSolved * 50) + (topAnswers * 100);
 
     const recentDoubts = await Doubt.find({ askerId: studentId })
       .sort({ createdAt: -1 })
@@ -145,15 +151,22 @@ router.get('/student-profile/:studentId', async (req: AuthRequest, res: Response
     res.status(200).json({
       student,
       stats: {
-        totalDoubts,
-        resolvedDoubts,
-        totalAnswers,
-        correctAnswers,
+        totalDoubts: questionsAsked,
+        resolvedDoubts: questionsSolved,
+        totalAnswers: answers.length,
+        correctAnswers: acceptedAnswers,
         hintsUsed,
         xp: profile?.xp || 0,
         streak: profile?.streak || 0,
         badges: profile?.badges || [],
-        performanceLevel: student.performanceLevel || 'average'
+        performanceLevel: student.performanceLevel || 'average',
+        questionsAsked,
+        questionsSolved,
+        acceptedAnswers,
+        topAnswers,
+        knowledgeBaseContributions,
+        aiScore: avgAIScore,
+        contributionScore
       },
       weakTopics: student.weakTopics || [],
       strongTopics: (weeklyProgress.length > 0) ? weeklyProgress[weeklyProgress.length - 1].strongTopics : [],

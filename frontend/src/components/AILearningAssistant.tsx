@@ -33,6 +33,16 @@ import {
 
 const API_URL = 'http://localhost:5000/api';
 
+interface ChatMessage {
+  role: 'coach' | 'user';
+  content: string;
+  type?: 'hint' | 'evaluation' | 'guidance' | 'text';
+  data?: any;
+  level?: number;
+  label?: string;
+  timestamp?: Date;
+}
+
 interface AILearningAssistantProps {
   doubt: any;
   aiAnalysis: any;
@@ -377,34 +387,87 @@ export const AILearningAssistant: React.FC<AILearningAssistantProps> = ({
   const [resolveLoading, setResolveLoading] = useState(false);
 
   // ── Coach Chat State ─────────────────────────────────────────────────────────
-  const [chatMessages, setChatMessages] = useState<{ role: 'coach' | 'user'; content: string; level?: number; label?: string }[]>([]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [followUpInput, setFollowUpInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  const LEVEL_LABELS = [
-    'Level 1 — Gentle Nudge',
-    'Level 2 — Stronger Hint',
-    'Level 3 — Concept Explained',
-    'Level 4 — Worked Example',
-    'Level 5 — Step-by-Step Guide',
-    'Level 6 — Teacher Recommendation',
-  ];
-
-  // Sync hints into chat bubbles
+  // Sync hints into chat bubbles and conversational memory
   useEffect(() => {
+    const welcomeBubble: ChatMessage = {
+      role: 'coach',
+      content: `🤖 AI Coach\n\nHello!\n\nI am your AI Learning Coach.\n\nI will help you solve this question without directly giving the final answer.\n\nYou can ask me:\n- Hint 1\n- Hint 2\n- Hint 3\n- Explain Concept\n- Where is my mistake?\n- Guide me\n\nI will only guide you. The final solution should come from you.`,
+      label: 'Welcome'
+    };
+
     if (hints.length === 0) {
-      setChatMessages([{ role: 'coach', content: 'Hello! I am your AI Coach. I will guide you through this doubt step by step without giving away the answer directly. Click **Reveal Hint** to get your first nudge!', label: 'Coach Intro' }]);
+      setChatMessages([welcomeBubble]);
       return;
     }
-    const bubbles = hints.map((h: any, i: number) => ({
-      role: 'coach' as const,
-      content: h.hintContent || h.content || '',
-      level: typeof h.ladderIndex === 'number' ? h.ladderIndex + 1 : i + 1,
-      label: LEVEL_LABELS[h.ladderIndex ?? i] || `Level ${i + 1}`,
-    }));
+
+    const bubbles: ChatMessage[] = [welcomeBubble];
+    hints.forEach((h: any, i: number) => {
+      if (h.ladderIndex === -1 || h.hintLadderIndex === -1) {
+        if (h.queryText && h.queryText.trim()) {
+          bubbles.push({
+            role: 'user',
+            content: h.queryText
+          });
+        }
+        bubbles.push({
+          role: 'coach',
+          content: h.hintContent || h.content || '',
+          label: 'Coach'
+        });
+      } else {
+        const hintLvl = typeof h.ladderIndex === 'number' ? h.ladderIndex + 1 : (typeof h.hintLadderIndex === 'number' ? h.hintLadderIndex + 1 : i + 1);
+        if (h.queryText && h.queryText.trim()) {
+          bubbles.push({
+            role: 'user',
+            content: h.queryText
+          });
+        } else {
+          bubbles.push({
+            role: 'user',
+            content: `Hint ${hintLvl}`
+          });
+        }
+        bubbles.push({
+          role: 'coach',
+          content: h.hintContent || h.content || '',
+          level: hintLvl,
+          label: `Hint ${hintLvl}`
+        });
+      }
+    });
+
     setChatMessages(bubbles);
   }, [hints]);
+
+  // Listen to post-solution submissions to trigger automatic feedback mode
+  useEffect(() => {
+    const handlePostSolution = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      
+      // Select the Coach tab automatically
+      setActiveTab('coach');
+
+      setChatMessages(prev => [
+        ...prev,
+        {
+          role: 'coach',
+          content: 'I have reviewed your answer. Would you like me to explain your mistakes?',
+          type: 'text',
+          data: { isFeedbackSelection: true }
+        }
+      ]);
+    };
+    
+    window.addEventListener('post-solution-to-coach', handlePostSolution);
+    return () => {
+      window.removeEventListener('post-solution-to-coach', handlePostSolution);
+    };
+  }, []);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -522,20 +585,46 @@ export const AILearningAssistant: React.FC<AILearningAssistantProps> = ({
   };
 
   // ─── Chat Helpers ─────────────────────────────────────────────────────────
-  const handleSendFollowUp = async () => {
-    const trimmed = followUpInput.trim();
+  const handleSendFollowUp = async (customQuery?: string) => {
+    const trimmed = (customQuery || followUpInput).trim();
     if (!trimmed || chatLoading) return;
-    setFollowUpInput('');
+    if (!customQuery) setFollowUpInput('');
+
     setChatMessages(prev => [...prev, { role: 'user', content: trimmed }]);
     setChatLoading(true);
     try {
       const token = localStorage.getItem('token');
+      const latestAnswer = answers[answers.length - 1]?.content || '';
+      
       const { data } = await axios.post(
         `${API_URL}/ai/chat-coach`,
-        { doubtId: doubt._id, query: trimmed },
+        { 
+          doubtId: doubt._id, 
+          query: trimmed,
+          answerText: latestAnswer
+        },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      setChatMessages(prev => [...prev, { role: 'coach', content: data.reply || data.hintContent || 'I could not generate a response. Try rephrasing.', label: 'Coach Reply' }]);
+
+      // If hint was blocked due to progression
+      if (data.status === 'hint_blocked') {
+        setChatMessages(prev => [...prev, {
+          role: 'coach',
+          content: data.reply || 'Please request the hints in order.',
+          label: 'Progression Alert'
+        }]);
+      } else {
+        setChatMessages(prev => [...prev, {
+          role: 'coach',
+          content: data.reply || data.hintContent || 'I could not generate a response. Try rephrasing.',
+          label: data.intent === 'HINT' ? `Hint ${data.hintNumber}` : data.intent === 'ANSWER_REVIEW' ? 'Answer Feedback' : 'Coach Guidance'
+        }]);
+      }
+
+      // If a progressive hint is successfully revealed, or a student gets feedback, reload doubt context
+      if ((data.intent === 'HINT' && data.status === 'success') || data.verdict === 'correct') {
+        window.dispatchEvent(new CustomEvent('refresh-doubt-data'));
+      }
     } catch {
       setChatMessages(prev => [...prev, { role: 'coach', content: 'Something went wrong. Please try again.', label: 'Error' }]);
     } finally {
@@ -705,6 +794,14 @@ export const AILearningAssistant: React.FC<AILearningAssistantProps> = ({
     );
   };
 
+  const hintsUsed = hints.filter((h) => typeof h.ladderIndex === 'number' && h.ladderIndex >= 0).length;
+  const revealedLevels = hints
+    .filter((h) => typeof h.ladderIndex === 'number' && h.ladderIndex >= 0)
+    .map((h) => h.ladderIndex + 1);
+  const isHint1Revealed = revealedLevels.includes(1);
+  const isHint2Revealed = revealedLevels.includes(2);
+  const isHint3Revealed = revealedLevels.includes(3);
+
   return (
     <div className="rounded-3xl border border-slate-100 bg-white p-6 shadow-premium dark:bg-[#1E293B] dark:border-slate-800 transition-colors duration-300 flex flex-col space-y-6">
       {/* Title */}
@@ -747,30 +844,37 @@ export const AILearningAssistant: React.FC<AILearningAssistantProps> = ({
         {/* ── COACH TAB ───────────────────────────────────────────────────────── */}
         {activeTab === 'coach' && (
           <div className="flex flex-col" style={{ height: '500px' }}>
+            {/* Hint Tracker Progress Indicator */}
             <div className="flex items-center justify-between mb-3 flex-shrink-0">
               <div className="flex items-center space-x-2">
-                <div className="h-6 w-6 rounded-lg bg-amber-50 flex items-center justify-center dark:bg-amber-950/20">
+                <div className="h-6 w-6 rounded-lg bg-amber-50 flex items-center justify-center dark:bg-amber-955/20">
                   <GraduationCap className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
                 </div>
                 <div>
-                  <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">AI Coach Mode</p>
-                  <p className="text-[10px] text-slate-400">{hints.length === 0 ? 'No hints revealed yet' : `${hints.length}/6 hints unlocked`}</p>
+                  <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-505 dark:text-slate-400">Hint Progression</p>
+                  <div className="flex items-center gap-1.5 text-[10px] text-slate-705 dark:text-slate-350 font-extrabold mt-0.5">
+                    <span className="flex items-center gap-1">
+                      <span>Hint 1</span>
+                      <span>{isHint1Revealed ? '✅' : '🔓'}</span>
+                    </span>
+                    <span className="text-slate-400">/</span>
+                    <span className="flex items-center gap-1">
+                      <span>Hint 2</span>
+                      <span>{isHint2Revealed ? '✅' : isHint1Revealed ? '🔓' : '🔒'}</span>
+                    </span>
+                    <span className="text-slate-400">/</span>
+                    <span className="flex items-center gap-1">
+                      <span>Hint 3</span>
+                      <span>{isHint3Revealed ? '✅' : isHint2Revealed ? '🔓' : '🔒'}</span>
+                    </span>
+                  </div>
                 </div>
               </div>
-              <div className="flex space-x-0.5">
-                {[1,2,3,4,5,6].map(lvl => (
-                  <div key={lvl} title={LEVEL_LABELS[lvl - 1]}
-                    className={`h-2 w-4 rounded-full transition-all ${
-                      lvl <= hints.length
-                        ? lvl <= 2 ? 'bg-amber-400' : lvl <= 4 ? 'bg-orange-500' : 'bg-rose-500'
-                        : 'bg-slate-200 dark:bg-slate-700'
-                    }`}
-                  />
-                ))}
-              </div>
+
             </div>
 
-            <div className="flex-1 overflow-y-auto rounded-2xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-[#0F172A] p-3 space-y-3" style={{ minHeight: 0 }}>
+            {/* Message Viewport */}
+            <div className="flex-1 overflow-y-auto rounded-2xl border border-slate-105 dark:border-slate-800 bg-slate-50 dark:bg-[#0F172A] p-3 space-y-3 mb-2" style={{ minHeight: 0 }}>
               {chatMessages.map((msg, idx) => (
                 <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   {msg.role === 'coach' && (
@@ -780,34 +884,82 @@ export const AILearningAssistant: React.FC<AILearningAssistantProps> = ({
                       </div>
                     </div>
                   )}
-                  <div className={`max-w-[85%] ${
-                    msg.role === 'user'
-                      ? 'bg-brand-600 text-white rounded-2xl rounded-br-md'
-                      : msg.level && msg.level <= 2
-                        ? 'bg-amber-50 border border-amber-100 dark:bg-amber-950/20 dark:border-amber-800/40 text-slate-700 dark:text-slate-300 rounded-2xl rounded-bl-md'
-                        : msg.level && msg.level <= 4
-                          ? 'bg-orange-50 border border-orange-100 dark:bg-orange-950/20 dark:border-orange-800/40 text-slate-700 dark:text-slate-300 rounded-2xl rounded-bl-md'
-                          : msg.level && msg.level >= 5
-                            ? 'bg-rose-50 border border-rose-100 dark:bg-rose-950/20 dark:border-rose-800/40 text-slate-700 dark:text-slate-300 rounded-2xl rounded-bl-md'
-                            : 'bg-white border border-slate-200 dark:bg-[#1E293B] dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-2xl rounded-bl-md'
-                  } px-3 py-2.5 shadow-sm`}>
-                    {msg.label && (
-                      <div className="flex items-center space-x-1 mb-1.5">
-                        {msg.level ? (
-                          <span className={`inline-flex items-center space-x-1 text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded-full ${
-                            msg.level <= 2 ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400'
-                            : msg.level <= 4 ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400'
-                            : 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400'
-                          }`}>
-                            {msg.level <= 2 ? <Unlock className="h-2.5 w-2.5" /> : msg.level >= 5 ? <GraduationCap className="h-2.5 w-2.5" /> : <Lightbulb className="h-2.5 w-2.5" />}
-                            <span>{msg.label}</span>
-                          </span>
-                        ) : (
-                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{msg.label}</span>
+                  <div className="max-w-[85%]">
+                    {msg.role === 'user' ? (
+                      <div className="bg-brand-600 text-white rounded-2xl rounded-br-md px-3 py-2 shadow-sm text-xs">
+                        <p className="whitespace-pre-wrap">{msg.content}</p>
+                      </div>
+                    ) : msg.data?.isFeedbackSelection ? (
+                      <div className="border-l-4 border-indigo-505 bg-indigo-505/5 text-slate-705 dark:text-slate-350 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm space-y-3 text-xs">
+                        <p className="font-bold leading-normal">{msg.content}</p>
+                        <div className="grid grid-cols-2 gap-2 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => handleSendFollowUp('Review Mistakes')}
+                            disabled={chatLoading}
+                            className="py-1.5 px-2 rounded-xl bg-white border border-indigo-205 text-indigo-605 hover:bg-indigo-50 dark:bg-slate-800 dark:border-slate-700 dark:text-indigo-400 font-extrabold text-[10px] transition-all text-center active:scale-95 disabled:opacity-50"
+                          >
+                            🔍 Review Mistakes
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSendFollowUp('Give Improvement Tips')}
+                            disabled={chatLoading}
+                            className="py-1.5 px-2 rounded-xl bg-white border border-indigo-205 text-indigo-605 hover:bg-indigo-50 dark:bg-slate-800 dark:border-slate-700 dark:text-indigo-400 font-extrabold text-[10px] transition-all text-center active:scale-95 disabled:opacity-50"
+                          >
+                            💡 Give Improvement Tips
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSendFollowUp('Explain Missing Concepts')}
+                            disabled={chatLoading}
+                            className="py-1.5 px-2 rounded-xl bg-white border border-indigo-205 text-indigo-605 hover:bg-indigo-50 dark:bg-slate-800 dark:border-slate-700 dark:text-indigo-400 font-extrabold text-[10px] transition-all text-center active:scale-95 disabled:opacity-50"
+                          >
+                            📚 Explain Missing Concepts
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!isHint1Revealed) {
+                                handleSendFollowUp('Hint 1');
+                              } else if (!isHint2Revealed) {
+                                handleSendFollowUp('Hint 2');
+                              } else {
+                                handleSendFollowUp('Hint 3');
+                              }
+                            }}
+                            disabled={chatLoading || (isHint1Revealed && isHint2Revealed && isHint3Revealed)}
+                            className="py-1.5 px-2 rounded-xl bg-white border border-indigo-205 text-indigo-655 hover:bg-indigo-50 dark:bg-slate-800 dark:border-slate-700 dark:text-indigo-400 font-extrabold text-[10px] transition-all text-center active:scale-95 disabled:opacity-50"
+                          >
+                            💡 Generate Hint
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className={`rounded-2xl rounded-bl-md px-3 py-2.5 shadow-sm text-xs border ${
+                        msg.level
+                          ? 'bg-amber-50 border-amber-100 dark:bg-amber-955/20 dark:border-amber-800/40 text-slate-705 dark:text-slate-300'
+                          : 'bg-white border border-slate-205 dark:bg-[#1E293B] dark:border-slate-700 text-slate-705 dark:text-slate-300'
+                      }`}>
+                        {msg.label && (
+                          <div className="flex items-center space-x-1 mb-1.5">
+                            {msg.level ? (
+                              <span className={`inline-flex items-center space-x-1 text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded-full ${
+                                msg.level <= 1 ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400'
+                                : msg.level <= 2 ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400'
+                                : 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-450'
+                              }`}>
+                                <Lightbulb className="h-2.5 w-2.5" />
+                                <span>{msg.label}</span>
+                              </span>
+                            ) : (
+                              <span className="text-[9px] font-bold text-slate-405 uppercase tracking-wider">{msg.label}</span>
+                            )}
+                          </div>
                         )}
+                        <p className="leading-relaxed whitespace-pre-wrap">{msg.content}</p>
                       </div>
                     )}
-                    <p className="text-xs leading-relaxed whitespace-pre-wrap">{msg.content}</p>
                   </div>
                   {msg.role === 'user' && (
                     <div className="flex-shrink-0 ml-2 mt-1">
@@ -818,14 +970,15 @@ export const AILearningAssistant: React.FC<AILearningAssistantProps> = ({
                   )}
                 </div>
               ))}
-              {(hintLoading || chatLoading) && (
+              {chatLoading && (
                 <div className="flex justify-start">
-                  <div className="flex-shrink-0 mr-2">
-                    <div className="h-6 w-6 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center">
+                  <div className="flex-shrink-0 mr-2 mt-1">
+                    <div className="h-6 w-6 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-sm">
                       <Sparkles className="h-3 w-3 text-white" />
                     </div>
                   </div>
-                  <div className="bg-white dark:bg-[#1E293B] border border-slate-200 dark:border-slate-700 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm">
+                  <div className="bg-white dark:bg-[#1E293B] border border-slate-205 dark:border-slate-700 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm space-y-1">
+                    <span className="text-[10px] text-slate-400 font-bold">AI is thinking...</span>
                     <div className="flex space-x-1 items-center">
                       <div className="h-1.5 w-1.5 bg-amber-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                       <div className="h-1.5 w-1.5 bg-amber-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
@@ -837,63 +990,101 @@ export const AILearningAssistant: React.FC<AILearningAssistantProps> = ({
               <div ref={chatEndRef} />
             </div>
 
-            <div className="flex-shrink-0 mt-2 space-y-2">
-              {isAsker && !['peer_solved', 'ai_hinted', 'teacher_solved'].includes(doubt.status) && hints.length < 6 && (
-                <button
-                  onClick={handleRequestHint}
-                  disabled={hintLoading || chatLoading}
-                  className="w-full flex items-center justify-center space-x-2 rounded-xl font-bold py-2 text-xs transition-all shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
-                  style={{
-                    background: hints.length < 2 ? 'linear-gradient(135deg, #f59e0b, #d97706)'
-                      : hints.length < 4 ? 'linear-gradient(135deg, #f97316, #ea580c)'
-                      : 'linear-gradient(135deg, #f43f5e, #e11d48)',
-                    color: 'white'
-                  }}
-                >
-                  {hintLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : (
-                    <>
-                      {hints.length < 6 ? <Unlock className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
-                      <span>
-                        {hints.length === 0 ? 'Reveal Level 1 — Gentle Nudge'
-                          : hints.length === 1 ? 'Reveal Level 2 — Stronger Hint'
-                          : hints.length === 2 ? 'Reveal Level 3 — Concept'
-                          : hints.length === 3 ? 'Reveal Level 4 — Worked Example'
-                          : hints.length === 4 ? 'Reveal Level 5 — Step-by-Step'
-                          : 'Reveal Level 6 — Teacher Recommendation'}
-                      </span>
-                      <ChevronRight className="h-3.5 w-3.5" />
-                    </>
-                  )}
-                </button>
-              )}
+            {/* Clickable Quick Command Chips */}
+            <div className="flex flex-wrap gap-1 mb-2 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => handleSendFollowUp('Hint 1')}
+                disabled={chatLoading || isHint1Revealed}
+                className={`px-2 py-1 rounded-lg border text-[9px] font-extrabold uppercase transition-all shadow-sm ${
+                  isHint1Revealed
+                    ? "bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed dark:bg-slate-800 dark:border-slate-700"
+                    : "bg-amber-50 border-amber-205 text-amber-655 hover:bg-amber-100 dark:bg-amber-955/20 dark:border-amber-800/40 dark:text-amber-400 active:scale-95"
+                }`}
+              >
+                💡 Hint 1
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!isHint1Revealed) {
+                    alert("Please request Hint 1 first!");
+                  } else {
+                    handleSendFollowUp('Hint 2');
+                  }
+                }}
+                disabled={chatLoading || isHint2Revealed || !isHint1Revealed}
+                className={`px-2 py-1 rounded-lg border text-[9px] font-extrabold uppercase transition-all shadow-sm ${
+                  isHint2Revealed || !isHint1Revealed
+                    ? "bg-slate-100 border-slate-205 text-slate-400 cursor-not-allowed dark:bg-slate-800 dark:border-slate-700"
+                    : "bg-amber-50 border-amber-205 text-amber-655 hover:bg-amber-100 dark:bg-amber-955/20 dark:border-amber-800/40 dark:text-amber-400 active:scale-95"
+                }`}
+              >
+                {isHint1Revealed ? '💡 Hint 2' : '🔒 Hint 2'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!isHint2Revealed) {
+                    alert("Please request Hint 2 first!");
+                  } else {
+                    handleSendFollowUp('Hint 3');
+                  }
+                }}
+                disabled={chatLoading || isHint3Revealed || !isHint2Revealed}
+                className={`px-2 py-1 rounded-lg border text-[9px] font-extrabold uppercase transition-all shadow-sm ${
+                  isHint3Revealed || !isHint2Revealed
+                    ? "bg-slate-100 border-slate-205 text-slate-405 cursor-not-allowed dark:bg-slate-800 dark:border-slate-700"
+                    : "bg-amber-50 border-amber-205 text-amber-655 hover:bg-amber-100 dark:bg-amber-955/20 dark:border-amber-800/40 dark:text-amber-400 active:scale-95"
+                }`}
+              >
+                {isHint2Revealed ? '💡 Hint 3' : '🔒 Hint 3'}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSendFollowUp('Explain Concept')}
+                disabled={chatLoading}
+                className="px-2 py-1 rounded-lg border bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-100 dark:bg-blue-955/20 dark:border-blue-800/40 dark:text-blue-400 text-[9px] font-extrabold uppercase transition-all shadow-sm active:scale-95"
+              >
+                📚 Explain Concept
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSendFollowUp('Where is my mistake?')}
+                disabled={chatLoading}
+                className="px-2 py-1 rounded-lg border bg-rose-50 border-rose-200 text-rose-600 hover:bg-rose-100 dark:bg-rose-955/20 dark:border-rose-800/40 dark:text-rose-400 text-[9px] font-extrabold uppercase transition-all shadow-sm active:scale-95"
+              >
+                🔍 Where is my mistake?
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSendFollowUp('Guide me')}
+                disabled={chatLoading}
+                className="px-2 py-1 rounded-lg border bg-emerald-50 border-emerald-200 text-emerald-600 hover:bg-emerald-100 dark:bg-emerald-955/20 dark:border-emerald-800/40 dark:text-emerald-400 text-[9px] font-extrabold uppercase transition-all shadow-sm active:scale-95"
+              >
+                🤖 Guide me
+              </button>
+            </div>
 
-              {isAsker && !['peer_solved', 'ai_hinted', 'teacher_solved'].includes(doubt.status) && hints.length > 0 && (
-                <button
-                  onClick={handleResolveWithAI}
-                  disabled={resolveLoading}
-                  className="w-full flex items-center justify-center space-x-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 text-xs transition-all shadow-sm disabled:opacity-60"
-                >
-                  {resolveLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle className="h-3.5 w-3.5" />}
-                  <span>I understand — Mark as Resolved</span>
-                </button>
-              )}
-
-              <div className="flex items-center space-x-2 bg-white dark:bg-[#0F172A] border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 shadow-sm">
-                <input
-                  type="text"
-                  placeholder={hints.length === 0 ? 'Reveal a hint first, then ask follow-ups…' : 'Ask a follow-up question…'}
+            {/* Input Area */}
+            <div className="flex-shrink-0">
+              <div className="flex items-center space-x-2 bg-white dark:bg-[#0F172A] border border-slate-205 dark:border-slate-700 rounded-xl px-2 py-1.5 shadow-sm">
+                <textarea
+                  placeholder="Examples:&#13;&#10;Type &quot;Hint 1&quot;&#13;&#10;Type &quot;Explain Concept&quot;&#13;&#10;Type &quot;Where is my mistake?&quot;&#13;&#10;Type &quot;Guide me&quot;&#13;&#10;Type your question..."
                   value={followUpInput}
                   onChange={e => setFollowUpInput(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSendFollowUp()}
-                  disabled={chatLoading || hints.length === 0}
-                  className="flex-1 bg-transparent text-xs text-slate-700 dark:text-slate-300 placeholder-slate-350 dark:placeholder-slate-600 outline-none disabled:opacity-50"
+                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendFollowUp(); } }}
+                  disabled={chatLoading}
+                  rows={2}
+                  className="flex-1 bg-transparent text-xs text-slate-700 dark:text-slate-350 placeholder-slate-400 dark:placeholder-slate-600 outline-none disabled:opacity-50 resize-none leading-normal font-semibold animate-none border-none shadow-none focus:ring-0 focus:outline-none"
                 />
+
                 <button
-                  onClick={handleSendFollowUp}
-                  disabled={chatLoading || !followUpInput.trim() || hints.length === 0}
-                  className="h-6 w-6 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-all"
+                  onClick={() => handleSendFollowUp()}
+                  disabled={chatLoading || !followUpInput.trim()}
+                  className="h-7 w-7 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-all flex-shrink-0 active:scale-95"
                 >
-                  {chatLoading ? <Loader2 className="h-3 w-3 text-white animate-spin" /> : <Send className="h-3 w-3 text-white" />}
+                  <Send className="h-3.5 w-3.5 text-white" />
                 </button>
               </div>
             </div>
