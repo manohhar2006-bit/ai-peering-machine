@@ -184,8 +184,8 @@ export const DoubtFeed: React.FC = () => {
                 <h3 className="font-bold text-slate-800 text-base line-clamp-1 group-hover:text-brand-650 transition-colors dark:text-slate-105">
                   {doubt.title}
                 </h3>
-                <p className="mt-2 text-xs text-slate-500 line-clamp-2 dark:text-slate-400 mb-4 leading-relaxed">
-                  {doubt.description}
+                <p className="mt-2 text-xs text-slate-500 line-clamp-2 dark:text-slate-400 mb-4 leading-relaxed italic">
+                  {doubt.inputType === 'text' ? doubt.description : `[Attached ${doubt.inputType?.toUpperCase()}]`}
                 </p>
 
                 <hr className="border-slate-50 dark:border-slate-800 mb-4" />

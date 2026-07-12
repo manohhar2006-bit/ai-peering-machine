@@ -229,6 +229,9 @@ export interface IAnswer extends Document {
   attemptNumber: number;
   isLatest: boolean;
   feedback: string;
+  isOfficialFacultySolution?: boolean;
+  isDraft?: boolean;
+  uploadedFiles?: { name: string; url: string }[];
   versions: {
     content: string;
     inputType: 'text' | 'image' | 'pdf';
@@ -281,6 +284,12 @@ const AnswerSchema = new Schema<IAnswer>({
   attemptNumber: { type: Number, default: 1 },
   isLatest: { type: Boolean, default: true },
   feedback: { type: String, default: '' },
+  isOfficialFacultySolution: { type: Boolean, default: false },
+  isDraft: { type: Boolean, default: false },
+  uploadedFiles: [{
+    name: { type: String },
+    url: { type: String }
+  }],
   versions: [{
     content: { type: String, required: true },
     inputType: { type: String, enum: ['text', 'image', 'pdf'], default: 'text' },
@@ -852,3 +861,52 @@ const RefereeEvaluationSchema = new Schema<IRefereeEvaluation>({
 });
 
 export const RefereeEvaluation = mongoose.model<IRefereeEvaluation>('RefereeEvaluation', RefereeEvaluationSchema);
+
+// Global Settings Schema
+export interface IGlobalSettings extends Document {
+  allowCommunitySolutions: boolean;
+  hideCommunitySolutionsUntilFirstAttempt: boolean;
+  allowUnlimitedAttempts: boolean;
+  maxAttempts?: number | null;
+  allowAnswerEditing: boolean;
+  aiHintLevels: string;
+  escalationRules: string;
+  xpRewardConfig: {
+    askerXP: number;
+    solverXP: number;
+    bonusXP: number;
+    verificationXP: number;
+    streakMultiplier: number;
+  };
+  coinRewardConfig: {
+    askerCoins: number;
+    solverCoins: number;
+    bonusCoins: number;
+    verificationCoins: number;
+  };
+}
+
+const GlobalSettingsSchema = new Schema<IGlobalSettings>({
+  allowCommunitySolutions: { type: Boolean, default: true },
+  hideCommunitySolutionsUntilFirstAttempt: { type: Boolean, default: true },
+  allowUnlimitedAttempts: { type: Boolean, default: true },
+  maxAttempts: { type: Number, default: null },
+  allowAnswerEditing: { type: Boolean, default: true },
+  aiHintLevels: { type: String, default: 'three-levels' },
+  escalationRules: { type: String, default: 'auto-escalate' },
+  xpRewardConfig: {
+    askerXP: { type: Number, default: 25 },
+    solverXP: { type: Number, default: 100 },
+    bonusXP: { type: Number, default: 50 },
+    verificationXP: { type: Number, default: 100 },
+    streakMultiplier: { type: Number, default: 1.5 }
+  },
+  coinRewardConfig: {
+    askerCoins: { type: Number, default: 10 },
+    solverCoins: { type: Number, default: 40 },
+    bonusCoins: { type: Number, default: 20 },
+    verificationCoins: { type: Number, default: 40 }
+  }
+});
+
+export const GlobalSettings = mongoose.model<IGlobalSettings>('GlobalSettings', GlobalSettingsSchema);

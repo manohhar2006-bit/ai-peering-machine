@@ -261,8 +261,8 @@ export const LearningHub: React.FC = () => {
                       <h4 className="font-extrabold text-slate-800 dark:text-slate-100 text-base line-clamp-2 leading-snug group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors">
                         {doubt.title}
                       </h4>
-                      <p className="text-slate-500 dark:text-slate-400 text-xs line-clamp-3 leading-relaxed">
-                        {doubt.description || doubt.question}
+                      <p className="text-slate-500 dark:text-slate-400 text-xs line-clamp-3 leading-relaxed italic">
+                        {doubt.inputType === 'text' ? (doubt.description || doubt.question) : `[Attached ${doubt.inputType?.toUpperCase()}]`}
                       </p>
                     </div>
 
@@ -593,7 +593,7 @@ export const LearningHub: React.FC = () => {
                   ) : (
                     <div className="h-72 flex flex-col justify-center items-center text-slate-400 bg-slate-50/50 dark:bg-slate-900/30 rounded-xl">
                       <Activity className="h-10 w-10 text-slate-355 mb-2 animate-pulse" />
-                      <p className="text-xs">No weekly progress logs recorded yet. Begin solving doubts to track progress trends.</p>
+                      <p className="text-xs">Complete learning activities to generate your performance chart.</p>
                     </div>
                   )}
                 </div>

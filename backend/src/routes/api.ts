@@ -39,6 +39,9 @@ router.post('/doubts/:id/escalate', authenticateToken, doubtController.escalateD
 router.patch('/doubts/:id/status', authenticateToken, doubtController.updateDoubtStatus);
 router.put('/doubts/:id/settings', authenticateToken, requireRole('teacher'), doubtController.updateDoubtSettings);
 router.post('/doubts/:id/grant-permission', authenticateToken, requireRole('teacher'), doubtController.grantStudentPermission);
+router.get('/teacher/global-settings', authenticateToken, requireRole('teacher'), doubtController.getGlobalSettings);
+router.post('/teacher/global-settings', authenticateToken, requireRole('teacher'), doubtController.saveGlobalSettings);
+router.post('/doubts/:id/faculty-resolution', authenticateToken, requireRole('teacher'), answerController.submitFacultyResolution);
 
 // Answer Routes
 router.post('/answers', authenticateToken, requireRole('student'), answerController.submitAnswer);

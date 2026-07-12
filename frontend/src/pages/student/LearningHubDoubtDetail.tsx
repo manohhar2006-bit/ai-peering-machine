@@ -359,29 +359,44 @@ export const LearningHubDoubtDetail: React.FC = () => {
         <div className="space-y-6">
           {!isEditing ? (
             <div className="bg-white dark:bg-[#1E293B] p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-6">
-              <div className="space-y-2">
-                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">Question Description</span>
-                <p className="text-slate-750 dark:text-slate-200 text-sm leading-relaxed whitespace-pre-wrap font-medium">
-                  {doubt.description || doubt.question}
-                </p>
-              </div>
-
-              {/* Uploaded media files */}
-              {doubt.originalUploadUrl && (
-                <div className="space-y-2 border-t border-slate-50 dark:border-slate-800 pt-4">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">Uploaded Attachment</span>
-                  <div className="inline-flex items-center space-x-2 p-3 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-105 dark:border-slate-800 text-xs">
-                    <FileText className="h-4.5 w-4.5 text-brand-650" />
-                    <a
-                      href={doubt.originalUploadUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-brand-600 font-bold hover:underline"
-                    >
-                      View Original Attachment file
-                    </a>
-                  </div>
+              {doubt.inputType === 'text' ? (
+                <div className="space-y-2">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">Question Description</span>
+                  <p className="text-slate-750 dark:text-slate-200 text-sm leading-relaxed whitespace-pre-wrap font-medium">
+                    {doubt.description || doubt.question}
+                  </p>
                 </div>
+              ) : (
+                doubt.originalUploadUrl && (
+                  <div className="space-y-4 pt-2">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">Uploaded Question Material ({doubt.inputType?.toUpperCase()})</span>
+                    {doubt.inputType === 'image' ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {(() => {
+                          let urls: string[] = [];
+                          if (doubt.originalUploadUrl.startsWith('[')) {
+                            try {
+                              urls = JSON.parse(doubt.originalUploadUrl);
+                            } catch (e) {
+                              urls = [doubt.originalUploadUrl];
+                            }
+                          } else {
+                            urls = [doubt.originalUploadUrl];
+                          }
+                          return urls.map((url, idx) => (
+                            <div key={idx} className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-850 bg-slate-50 dark:bg-slate-900 p-2 flex items-center justify-center shadow-sm">
+                              <img src={url} alt={`Student upload ${idx + 1}`} className="max-h-[300px] object-contain" />
+                            </div>
+                          ));
+                        })()}
+                      </div>
+                    ) : (
+                      <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-850 bg-slate-50 dark:bg-slate-900 h-[450px]">
+                        <iframe src={doubt.originalUploadUrl} className="w-full h-full border-none" title="Student pdf upload" />
+                      </div>
+                    )}
+                  </div>
+                )
               )}
 
               {/* Doubt Metadata */}

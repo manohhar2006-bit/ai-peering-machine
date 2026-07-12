@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../../context/AuthContext';
@@ -25,7 +25,10 @@ import {
   ArrowLeft,
   Search,
   ThumbsUp,
-  Trophy
+  Trophy,
+  UploadCloud,
+  Save,
+  Activity
 } from 'lucide-react';
 
 const API_URL = 'http://localhost:5000/api';
@@ -71,6 +74,18 @@ export const DoubtDetail: React.FC = () => {
   const [maxAttempts, setMaxAttempts] = useState<number | string>('');
   const [allowAnswerEditing, setAllowAnswerEditing] = useState(true);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
+
+  // Faculty Resolution Workspace States
+  const [facultyAnswerType, setFacultyAnswerType] = useState<'text' | 'image' | 'pdf' | 'multiple'>('text');
+  const [facultyText, setFacultyText] = useState('');
+  const [facultyImage, setFacultyImage] = useState('');
+  const [facultyPdf, setFacultyPdf] = useState('');
+  const [facultyFiles, setFacultyFiles] = useState<Array<{ name: string; url: string }>>([]);
+  const [publishAsCommunity, setPublishAsCommunity] = useState(true);
+  const [draftSaving, setDraftSaving] = useState(false);
+  const [publishLoading, setPublishLoading] = useState(false);
+  const [previewMode, setPreviewMode] = useState(false);
+  const [selectedAttemptId, setSelectedAttemptId] = useState<string>('');
 
   // Community Solution Explorer States
   const [selectedSolutionId, setSelectedSolutionId] = useState<string>('');
@@ -219,6 +234,23 @@ export const DoubtDetail: React.FC = () => {
         loadedAnswers = Array.isArray(data) ? data : [];
       }
       setAnswers(loadedAnswers);
+
+      // Load teacher draft if teacher and escalated
+      if (user?.role === 'teacher' && response.data.isEscalated) {
+        const teacherDraft = loadedAnswers.find((ans: any) => ans.isOfficialFacultySolution && ans.isDraft);
+        if (teacherDraft) {
+          setFacultyText(teacherDraft.content || '');
+          setFacultyAnswerType(teacherDraft.inputType || 'text');
+          if (teacherDraft.inputType === 'image') {
+            setFacultyImage(teacherDraft.originalUploadUrl || '');
+          } else if (teacherDraft.inputType === 'pdf') {
+            setFacultyPdf(teacherDraft.originalUploadUrl || '');
+          } else if (teacherDraft.inputType === 'multiple') {
+            setFacultyFiles(teacherDraft.uploadedFiles || []);
+          }
+          setPublishAsCommunity(teacherDraft.isPublished !== false);
+        }
+      }
 
       if (loadedAnswers.length > 0) {
         const sorted = getSortedAnswers(loadedAnswers);
@@ -468,6 +500,822 @@ export const DoubtDetail: React.FC = () => {
   const currentVersionIdx = activeVersionIndex < versionsCount ? activeVersionIndex : Math.max(0, versionsCount - 1);
   const selectedVersion = myAnswer?.versions?.[currentVersionIdx] || myAnswer || null;
 
+  // Rich Text Editor component
+  const RichTextEditor: React.FC<{
+    value: string;
+    onChange: (val: string) => void;
+  }> = ({ value, onChange }) => {
+    const editorRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+      if (editorRef.current && editorRef.current.innerHTML !== value) {
+        editorRef.current.innerHTML = value;
+      }
+    }, [value]);
+
+    const handleInput = () => {
+      if (editorRef.current) {
+        onChange(editorRef.current.innerHTML);
+      }
+    };
+
+    const runCommand = (cmd: string, val: string = '') => {
+      document.execCommand(cmd, false, val);
+      handleInput();
+    };
+
+    return (
+      <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden bg-slate-50 dark:bg-[#0F172A] focus-within:border-brand-500 transition-all">
+        <div className="flex flex-wrap items-center gap-1.5 p-2 bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
+          <button
+            type="button"
+            onClick={() => runCommand('bold')}
+            className="px-2 py-1 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-300"
+            title="Bold"
+          >
+            B
+          </button>
+          <button
+            type="button"
+            onClick={() => runCommand('italic')}
+            className="px-2 py-1 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-xs italic text-slate-700 dark:text-slate-300"
+            title="Italic"
+          >
+            I
+          </button>
+          <button
+            type="button"
+            onClick={() => runCommand('underline')}
+            className="px-2 py-1 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-xs underline text-slate-700 dark:text-slate-300"
+            title="Underline"
+          >
+            U
+          </button>
+          <div className="w-[1px] h-4 bg-slate-300 dark:bg-slate-700 mx-1" />
+          <button
+            type="button"
+            onClick={() => runCommand('insertUnorderedList')}
+            className="px-2 py-1 rounded hover:bg-slate-200 dark:hover:bg-slate-805 text-xs text-slate-700 dark:text-slate-300 font-semibold"
+            title="Bullet List"
+          >
+            • List
+          </button>
+          <button
+            type="button"
+            onClick={() => runCommand('insertOrderedList')}
+            className="px-2 py-1 rounded hover:bg-slate-200 dark:hover:bg-slate-805 text-xs text-slate-700 dark:text-slate-300 font-semibold"
+            title="Numbered List"
+          >
+            1. List
+          </button>
+          <div className="w-[1px] h-4 bg-slate-300 dark:bg-slate-700 mx-1" />
+          <button
+            type="button"
+            onClick={() => {
+              const url = prompt('Enter link URL:');
+              if (url) runCommand('createLink', url);
+            }}
+            className="px-2 py-1 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-xs text-slate-700 dark:text-slate-300 font-semibold"
+            title="Insert Link"
+          >
+            🔗 Link
+          </button>
+          <button
+            type="button"
+            onClick={() => runCommand('formatBlock', 'pre')}
+            className="px-2 py-1 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-xs text-slate-705 dark:text-slate-300 font-mono"
+            title="Code Block"
+          >
+            {"</> Code"}
+          </button>
+        </div>
+
+        <div
+          ref={editorRef}
+          contentEditable
+          onInput={handleInput}
+          onBlur={handleInput}
+          className="w-full min-h-[150px] p-4 text-xs focus:outline-none dark:text-slate-200 bg-white dark:bg-slate-950 overflow-y-auto"
+        />
+      </div>
+    );
+  };
+
+  const renderHintAndChatHistory = () => {
+    if (hints.length === 0) {
+      return (
+        <div className="p-4 bg-slate-50 dark:bg-slate-800/40 rounded-2xl text-xs text-slate-400 font-semibold text-center">
+          No AI Coach chat or hint history available. The student did not request hints.
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2">
+        {hints.map((h: any, idx: number) => {
+          const isQuery = !!h.queryText;
+          return (
+            <div key={idx} className="space-y-2">
+              {isQuery ? (
+                <div className="space-y-2">
+                  <div className="flex justify-end">
+                    <div className="bg-brand-600 text-white rounded-2xl rounded-tr-none px-4 py-2 text-xs max-w-[85%] font-medium">
+                      <p className="text-[10px] text-brand-100 font-bold uppercase tracking-wider mb-1">Student</p>
+                      <p className="whitespace-pre-wrap">{h.queryText}</p>
+                    </div>
+                  </div>
+                  <div className="flex justify-start">
+                    <div className="bg-slate-105 dark:bg-slate-800 text-slate-800 dark:text-slate-200 rounded-2xl rounded-tl-none px-4 py-2 text-xs max-w-[85%] font-medium border border-slate-200/50 dark:border-slate-700/50">
+                      <p className="text-[10px] text-amber-600 dark:text-amber-550 font-bold uppercase tracking-wider mb-1">AI Coach</p>
+                      <p className="whitespace-pre-wrap">{h.hintContent}</p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center space-x-2 bg-amber-50/50 dark:bg-amber-955/15 border border-amber-200/30 dark:border-amber-900/25 p-3 rounded-2xl text-xs">
+                  <Lightbulb className="h-4 w-4 text-amber-500 flex-shrink-0 animate-float" />
+                  <div>
+                    <span className="font-extrabold text-amber-800 dark:text-amber-450 mr-2">Hint #{h.ladderIndex + 1} Revealed:</span>
+                    <span className="font-semibold text-slate-655 dark:text-slate-350">{h.hintContent}</span>
+                    {h.encouragement && <p className="text-[10px] text-slate-400 italic mt-0.5">"{h.encouragement}"</p>}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const renderOfficialSolutionCard = () => {
+    const officialSol = answers.find(ans => ans.isOfficialFacultySolution && !ans.isDraft);
+    if (!officialSol) return null;
+
+    return (
+      <div className="rounded-3xl border-2 border-emerald-100 bg-emerald-50/15 p-6 shadow-premium dark:bg-emerald-955/5 dark:border-emerald-900/30 transition-colors duration-305 space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-emerald-100/40 dark:border-emerald-900/20">
+          <div className="flex items-center space-x-2">
+            <div className="h-9 w-9 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center dark:bg-emerald-950/20 dark:text-emerald-400">
+              <Trophy className="h-5 w-5 animate-float" />
+            </div>
+            <div>
+              <h3 className="text-sm font-black text-emerald-800 dark:text-emerald-300">🏆 Official Faculty Solution</h3>
+              <p className="text-[10px] text-slate-400">Published by {officialSol.solverId?.name || 'Faculty'} on {new Date(officialSol.createdAt).toLocaleDateString()}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="text-xs text-slate-700 dark:text-slate-200 leading-relaxed font-semibold">
+          {officialSol.inputType === 'text' && (
+            <div 
+              className="prose dark:prose-invert max-w-none text-xs text-slate-700 dark:text-slate-300 font-semibold"
+              dangerouslySetInnerHTML={{ __html: officialSol.content }}
+            />
+          )}
+
+          {officialSol.inputType === 'image' && (
+            <div className="space-y-2">
+              {officialSol.originalUploadUrl && (
+                <div className="rounded-xl overflow-hidden border border-slate-202 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 max-h-[500px] flex items-center justify-center">
+                  <img 
+                    src={officialSol.originalUploadUrl} 
+                    alt="Official Image Solution" 
+                    className="max-w-full max-h-[480px] object-contain"
+                  />
+                </div>
+              )}
+              {officialSol.content && <p className="whitespace-pre-wrap pt-2">{officialSol.content}</p>}
+            </div>
+          )}
+
+          {officialSol.inputType === 'pdf' && (
+            <div className="space-y-3">
+              {officialSol.originalUploadUrl && (
+                <div className="space-y-2">
+                  <div className="rounded-xl overflow-hidden border border-slate-205 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 h-[600px]">
+                    <iframe 
+                      src={officialSol.originalUploadUrl} 
+                      className="w-full h-full border-none"
+                      title="Official PDF Solution"
+                    />
+                  </div>
+                  <a
+                    href={officialSol.originalUploadUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center space-x-1 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                  >
+                    <span>Download PDF</span>
+                  </a>
+                </div>
+              )}
+            </div>
+          )}
+
+          {officialSol.inputType === 'multiple' && (
+            <div className="space-y-4">
+              {officialSol.content && (
+                <div 
+                  className="prose dark:prose-invert max-w-none text-xs text-slate-700 dark:text-slate-300 font-semibold mb-4"
+                  dangerouslySetInnerHTML={{ __html: officialSol.content }}
+                />
+              )}
+              
+              {officialSol.uploadedFiles && officialSol.uploadedFiles.length > 0 && (
+                <div className="space-y-3">
+                  <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Solution Attachments</h4>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {officialSol.uploadedFiles.map((file: any, index: number) => {
+                      const isImg = /\.(png|jpe?g|webp)$/i.test(file.url);
+                      const isPdf = /\.pdf$/i.test(file.url);
+                      return (
+                        <div key={index} className="border border-slate-200 dark:border-slate-800 rounded-2xl p-3 bg-white dark:bg-slate-900 flex flex-col space-y-2">
+                          <span className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate" title={file.name}>
+                            {file.name}
+                          </span>
+                          
+                          {isImg ? (
+                            <div className="rounded-lg overflow-hidden border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 h-32 flex items-center justify-center">
+                              <img src={file.url} alt={file.name} className="max-h-full max-w-full object-contain" />
+                            </div>
+                          ) : isPdf ? (
+                            <div className="rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-955 h-32 flex items-center justify-center">
+                              <FileText className="h-8 w-8 text-emerald-500" />
+                            </div>
+                          ) : (
+                            <div className="rounded-lg border border-slate-100 dark:border-slate-805 bg-slate-50 dark:bg-slate-955 h-32 flex items-center justify-center">
+                              <BookOpen className="h-8 w-8 text-slate-400" />
+                            </div>
+                          )}
+
+                          <a
+                            href={file.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-center py-1.5 px-3 bg-slate-105 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-205 text-[10px] font-bold rounded-lg transition-all"
+                          >
+                            Open / Download File
+                          </a>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderFacultyResolutionWorkspace = () => {
+    const studentAttempts = answers.filter(ans => {
+      const solverIdStr = ans.solverId?._id?.toString() || ans.solverId?.toString();
+      return solverIdStr === doubt.askerId._id;
+    });
+
+    const activeAttempt = studentAttempts.find(a => a._id === selectedAttemptId) || studentAttempts[0];
+
+    const handleMultipleFilesChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files;
+      if (!files || files.length === 0) return;
+
+      setOcrLoading(true);
+      try {
+        const uploadedList = [...facultyFiles];
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          const formData = new FormData();
+          formData.append('file', file);
+          
+          const response = await axios.post(`${API_URL}/ai/upload`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+          });
+          uploadedList.push({ name: file.name, url: response.data.originalUploadUrl });
+        }
+        setFacultyFiles(uploadedList);
+      } catch (err: any) {
+        console.error('Multiple file upload failed:', err);
+        alert('Failed to upload one or more files.');
+      } finally {
+        setOcrLoading(false);
+      }
+    };
+
+    const handleSingleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'pdf') => {
+      const files = e.target.files;
+      if (!files || files.length === 0) return;
+
+      setOcrLoading(true);
+      const formData = new FormData();
+      formData.append('file', files[0]);
+
+      try {
+        const response = await axios.post(`${API_URL}/ai/upload`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        if (type === 'image') {
+          setFacultyImage(response.data.originalUploadUrl);
+        } else {
+          setFacultyPdf(response.data.originalUploadUrl);
+        }
+      } catch (err: any) {
+        console.error('File upload failed:', err);
+        alert('Failed to upload file.');
+      } finally {
+        setOcrLoading(false);
+      }
+    };
+
+    const handleSaveFacultyResolution = async (isDraftMode: boolean) => {
+      if (isDraftMode) {
+        setDraftSaving(true);
+      } else {
+        setPublishLoading(true);
+      }
+
+      try {
+        let contentStr = '';
+        let uploadUrl = '';
+
+        if (facultyAnswerType === 'text') {
+          contentStr = facultyText;
+        } else if (facultyAnswerType === 'image') {
+          contentStr = 'Image Solution';
+          uploadUrl = facultyImage;
+        } else if (facultyAnswerType === 'pdf') {
+          contentStr = 'PDF Solution';
+          uploadUrl = facultyPdf;
+        } else if (facultyAnswerType === 'multiple') {
+          contentStr = facultyText || 'Multiple Files Solution';
+        }
+
+        const response = await axios.post(`${API_URL}/doubts/${id}/faculty-resolution`, {
+          content: contentStr,
+          inputType: facultyAnswerType,
+          originalUploadUrl: uploadUrl,
+          uploadedFiles: facultyAnswerType === 'multiple' ? facultyFiles : [],
+          isDraft: isDraftMode,
+          publishAsCommunitySolution: publishAsCommunity
+        });
+
+        alert(response.data.message);
+        setPreviewMode(false);
+        await fetchDoubt();
+      } catch (err: any) {
+        console.error('Failed to save resolution:', err);
+        alert(err.response?.data?.message || 'Resolution submission failed.');
+      } finally {
+        setDraftSaving(false);
+        setPublishLoading(false);
+      }
+    };
+
+    return (
+      <div className="space-y-6 max-w-6xl mx-auto p-4 md:p-6">
+        <div className="flex items-center space-x-2">
+          <button 
+            onClick={() => navigate('/teacher/escalations')}
+            className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-655 dark:text-slate-350 transition-all border border-slate-200 dark:border-slate-700"
+          >
+            <ArrowLeft className="h-4.5 w-4.5" />
+          </button>
+          <div>
+            <h2 className="text-xl font-black text-slate-805 dark:text-slate-100">Faculty Doubt Resolution Workspace</h2>
+            <p className="text-xs text-slate-400">Review student details, hints history, and provide an official resolved answer.</p>
+          </div>
+        </div>
+
+        <div className="rounded-3xl border border-slate-100 bg-white p-6 shadow-premium dark:bg-[#1E293B] dark:border-slate-800 transition-colors duration-300 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex gap-2">
+              <span className="bg-brand-50 text-brand-700 px-3 py-1 rounded-xl text-xs font-bold dark:bg-brand-950/20 dark:text-brand-400">
+                {doubt.subjectId?.code || 'GEN'}
+              </span>
+              <span className="bg-slate-100 text-slate-655 px-3 py-1 rounded-xl text-xs font-bold dark:bg-slate-800 dark:text-slate-400">
+                {doubt.topic}
+              </span>
+              <span className="bg-red-50 text-red-650 px-3 py-1 rounded-xl text-xs font-bold dark:bg-red-950/20 dark:text-red-405 uppercase">
+                {doubt.difficulty}
+              </span>
+            </div>
+            <span className="flex items-center space-x-1 rounded-full bg-red-50 px-3 py-1 text-xs font-extrabold text-red-655 dark:bg-red-955/20 dark:text-red-400">
+              <AlertTriangle className="h-4 w-4 animate-pulse animate-float" />
+              <span>ESCALATED</span>
+            </span>
+          </div>
+
+          <h1 className="text-xl font-black text-slate-800 dark:text-slate-105">{doubt.title}</h1>
+          <p className="text-xs text-slate-400 font-bold uppercase">Asker: {doubt.askerName || doubt.askerId?.name}</p>
+        </div>
+
+        <div className="rounded-3xl border border-slate-100 bg-white p-6 shadow-premium dark:bg-[#1E293B] dark:border-slate-800 transition-colors duration-300 space-y-3">
+          <h3 className="text-sm font-extrabold text-slate-800 dark:text-slate-205 border-b border-slate-50 dark:border-slate-800 pb-1.5 flex items-center space-x-1.5">
+            <HelpCircle className="h-4.5 w-4.5 text-slate-400" />
+            <span>Student Original Question Submission</span>
+          </h3>
+          {doubt.inputType === 'text' ? (
+            <div className="text-xs text-slate-707 dark:text-slate-350 leading-relaxed whitespace-pre-line bg-slate-50 dark:bg-[#0F172A] p-4 rounded-2xl border border-slate-100/50 dark:border-slate-800">
+              {doubt.description}
+            </div>
+          ) : (
+            doubt.originalUploadUrl && (
+              <div className="mt-3">
+                {doubt.inputType === 'image' ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {(() => {
+                      let urls: string[] = [];
+                      if (doubt.originalUploadUrl.startsWith('[')) {
+                        try {
+                          urls = JSON.parse(doubt.originalUploadUrl);
+                        } catch (e) {
+                          urls = [doubt.originalUploadUrl];
+                        }
+                      } else {
+                        urls = [doubt.originalUploadUrl];
+                      }
+                      return urls.map((url, idx) => (
+                        <div key={idx} className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 p-2 flex items-center justify-center shadow-sm">
+                          <img src={url} alt={`Student upload ${idx + 1}`} className="max-h-[300px] object-contain" />
+                        </div>
+                      ));
+                    })()}
+                  </div>
+                ) : (
+                  <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 h-[450px]">
+                    <iframe src={doubt.originalUploadUrl} className="w-full h-full border-none" title="Student pdf upload" />
+                  </div>
+                )}
+              </div>
+            )
+          )}
+        </div>
+
+        <div className="rounded-3xl border border-slate-100 bg-white p-6 shadow-premium dark:bg-[#1E293B] dark:border-slate-800 transition-colors duration-300 space-y-4">
+          <h3 className="text-sm font-extrabold text-slate-800 dark:text-slate-205 border-b border-slate-50 dark:border-slate-800 pb-1.5 flex items-center space-x-1.5">
+            <Activity className="h-4.5 w-4.5 text-slate-400" />
+            <span>Student Attempt History</span>
+          </h3>
+
+          {studentAttempts.length === 0 ? (
+            <p className="text-xs text-slate-400 italic">No solution attempts submitted by the student.</p>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex flex-wrap gap-2">
+                {studentAttempts.map((att, index) => (
+                  <button
+                    key={att._id}
+                    type="button"
+                    onClick={() => setSelectedAttemptId(att._id)}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+                      (selectedAttemptId === att._id || (!selectedAttemptId && index === 0))
+                        ? 'bg-brand-600 border-brand-600 text-white shadow-sm'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-105 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300'
+                    }`}
+                  >
+                    Attempt {index + 1} ({att.aiScore ?? att.aiEvaluation?.score ?? 0}%)
+                  </button>
+                ))}
+              </div>
+
+              {activeAttempt && (
+                <div className="p-4 bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 rounded-2xl space-y-4 text-xs">
+                  <div className="flex justify-between items-center text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                    <span>Submitted on: {new Date(activeAttempt.createdAt).toLocaleString()}</span>
+                    <span>AI Grade Score: {activeAttempt.aiScore ?? activeAttempt.aiEvaluation?.score ?? 0}%</span>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <span className="font-bold text-slate-500 uppercase tracking-wider text-[9px] block">Attempt Content ({activeAttempt.inputType || 'text'})</span>
+                    {renderAnswerContent(activeAttempt)}
+                  </div>
+
+                  {activeAttempt.aiEvaluation && (
+                    <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2">
+                      <span className="font-black text-brand-600 uppercase tracking-wider text-[9px] block">AI Grade Dimensions & Feedback</span>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                        {[
+                          { key: 'correctness', label: 'Correctness' },
+                          { key: 'clarity', label: 'Clarity' },
+                          { key: 'completeness', label: 'Completeness' },
+                          { key: 'logicalThinking', label: 'Logical Flow' }
+                        ].map((dim) => {
+                          const val = activeAttempt.aiEvaluation[dim.key] ?? 50;
+                          return (
+                            <div key={dim.key} className="space-y-1">
+                              <div className="flex justify-between text-[10px] font-bold text-slate-400">
+                                <span>{dim.label}</span>
+                                <span>{val}%</span>
+                              </div>
+                              <div className="h-1.5 w-full bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                                <div className="h-full bg-brand-500 rounded-full" style={{ width: `${val}%` }} />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <p className="text-xs text-slate-655 dark:text-slate-400 italic pt-1 leading-relaxed">
+                        <strong className="not-italic text-slate-750 dark:text-slate-300 font-bold block mb-1">Feedback Summary:</strong>
+                        "{activeAttempt.aiEvaluation.feedback}"
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-3xl border border-slate-100 bg-white p-6 shadow-premium dark:bg-[#1E293B] dark:border-slate-800 transition-colors duration-300 space-y-4">
+          <h3 className="text-sm font-extrabold text-slate-800 dark:text-slate-205 border-b border-slate-50 dark:border-slate-800 pb-1.5 flex items-center space-x-1.5">
+            <Brain className="h-4.5 w-4.5 text-brand-605" />
+            <span>AI Chat / Hint History</span>
+          </h3>
+          {renderHintAndChatHistory()}
+        </div>
+
+        <div className="rounded-3xl border border-slate-100 bg-white p-6 shadow-premium dark:bg-[#1E293B] dark:border-slate-800 transition-colors duration-300 space-y-6">
+          <div className="flex flex-col md:flex-row md:items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-805 gap-3">
+            <div>
+              <h3 className="text-base font-bold text-slate-855 dark:text-slate-105 flex items-center space-x-1.5">
+                <Sparkles className="h-5 w-5 text-brand-600 animate-float" />
+                <span>Faculty Resolution Workspace</span>
+              </h3>
+              <p className="text-[10px] text-slate-400 font-bold uppercase mt-0.5">Prepare the official answer submission</p>
+            </div>
+            
+            <div className="flex bg-slate-100 dark:bg-[#0F172A] p-1 rounded-xl">
+              {[
+                { id: 'text', label: 'Rich Text' },
+                { id: 'image', label: 'Upload Image' },
+                { id: 'pdf', label: 'Upload PDF' },
+                { id: 'multiple', label: 'Multiple Files' }
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => {
+                    setFacultyAnswerType(tab.id as any);
+                    setPreviewMode(false);
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    facultyAnswerType === tab.id
+                      ? 'bg-white text-slate-800 shadow-sm dark:bg-slate-800 dark:text-white'
+                      : 'text-slate-455 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {ocrLoading && (
+            <div className="flex flex-col items-center justify-center p-6 space-y-2 bg-slate-50 dark:bg-[#0F172A] rounded-2xl border border-dashed border-slate-205 dark:border-slate-800">
+              <Loader2 className="h-8 w-8 animate-spin text-brand-505" />
+              <p className="text-xs text-slate-400 font-bold">Uploading files to resolution workspace...</p>
+            </div>
+          )}
+
+          {!ocrLoading && (
+            <div className="space-y-4">
+              
+              {facultyAnswerType === 'text' && (
+                <div className="space-y-2">
+                  <span className="text-[10px] font-black uppercase text-slate-405 tracking-wider block">Solution Editor</span>
+                  <RichTextEditor value={facultyText} onChange={setFacultyText} />
+                </div>
+              )}
+
+              {facultyAnswerType === 'image' && (
+                <div className="space-y-4">
+                  <div className="border-2 border-dashed border-slate-205 dark:border-slate-800 rounded-2xl p-6 text-center hover:border-brand-500 transition-colors duration-300">
+                    <input
+                      type="file"
+                      id="faculty-image-file"
+                      accept="image/png, image/jpeg, image/jpg"
+                      onChange={(e) => handleSingleFileUpload(e, 'image')}
+                      className="hidden"
+                    />
+                    <label htmlFor="faculty-image-file" className="cursor-pointer space-y-2 block">
+                      <div className="mx-auto h-12 w-12 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center dark:bg-brand-950/20">
+                        <Image className="h-6 w-6" />
+                      </div>
+                      <div className="text-xs text-slate-505 font-bold">Click to upload Image solution</div>
+                      <p className="text-[10px] text-slate-400">Supports PNG, JPG, JPEG (Max 10MB)</p>
+                    </label>
+                  </div>
+
+                  {facultyImage && (
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center text-xs font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-955/20 px-3 py-2 rounded-xl border border-emerald-100/35">
+                        <span>Image uploaded successfully!</span>
+                        <button type="button" onClick={() => setFacultyImage('')} className="text-rose-600 font-bold hover:underline">Remove</button>
+                      </div>
+                      <div className="rounded-2xl overflow-hidden border border-slate-100 bg-slate-50 dark:bg-slate-900 dark:border-slate-800 max-h-60 flex items-center justify-center">
+                        <img src={facultyImage} alt="Uploaded Faculty solution" className="max-h-60 object-contain" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {facultyAnswerType === 'pdf' && (
+                <div className="space-y-4">
+                  <div className="border-2 border-dashed border-slate-205 dark:border-slate-800 rounded-2xl p-6 text-center hover:border-brand-505 transition-colors duration-300">
+                    <input
+                      type="file"
+                      id="faculty-pdf-file"
+                      accept="application/pdf"
+                      onChange={(e) => handleSingleFileUpload(e, 'pdf')}
+                      className="hidden"
+                    />
+                    <label htmlFor="faculty-pdf-file" className="cursor-pointer space-y-2 block">
+                      <div className="mx-auto h-12 w-12 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center dark:bg-brand-950/20">
+                        <FileText className="h-6 w-6" />
+                      </div>
+                      <div className="text-xs text-slate-505 font-bold">Click to upload PDF solution</div>
+                      <p className="text-[10px] text-slate-400">Supports PDF document (Max 20MB)</p>
+                    </label>
+                  </div>
+
+                  {facultyPdf && (
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center text-xs font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-955/20 px-3 py-2 rounded-xl border border-emerald-100/35">
+                        <span>PDF uploaded successfully!</span>
+                        <button type="button" onClick={() => setFacultyPdf('')} className="text-rose-605 font-bold hover:underline">Remove</button>
+                      </div>
+                      <div className="rounded-2xl overflow-hidden border border-slate-100 bg-slate-50 dark:bg-slate-900 dark:border-slate-805 h-60">
+                        <iframe src={facultyPdf} className="w-full h-full border-0" title="Uploaded Faculty PDF solution" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {facultyAnswerType === 'multiple' && (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label htmlFor="faculty-multiple-desc" className="text-xs font-semibold text-slate-700 dark:text-slate-350">Solution Text / Context Notes (Optional)</label>
+                    <RichTextEditor value={facultyText} onChange={setFacultyText} />
+                  </div>
+
+                  <div className="border-2 border-dashed border-slate-205 dark:border-slate-800 rounded-2xl p-6 text-center hover:border-brand-500 transition-colors duration-300">
+                    <input
+                      type="file"
+                      id="faculty-multiple-files"
+                      multiple
+                      onChange={handleMultipleFilesChange}
+                      className="hidden"
+                    />
+                    <label htmlFor="faculty-multiple-files" className="cursor-pointer space-y-2 block">
+                      <div className="mx-auto h-12 w-12 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center dark:bg-brand-950/20">
+                        <UploadCloud className="h-6 w-6" />
+                      </div>
+                      <div className="text-xs text-slate-505 font-bold">Click to select and upload Multiple Files</div>
+                      <p className="text-[10px] text-slate-400">Supports PNG, JPG, JPEG, PDF (Add sequentially)</p>
+                    </label>
+                  </div>
+
+                  {facultyFiles.length > 0 && (
+                    <div className="space-y-2">
+                      <span className="text-[10px] font-black uppercase text-slate-405 tracking-wider block">Uploaded Attachments ({facultyFiles.length})</span>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {facultyFiles.map((file, idx) => (
+                          <div key={idx} className="flex justify-between items-center p-3 border border-slate-200 bg-slate-50 dark:bg-slate-900 dark:border-slate-808 rounded-xl text-xs">
+                            <span className="font-bold text-slate-700 dark:text-slate-300 truncate max-w-[70%]" title={file.name}>
+                              {file.name}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setFacultyFiles(prev => prev.filter((_, i) => i !== idx));
+                              }}
+                              className="text-rose-600 hover:underline font-bold text-[10px]"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+            </div>
+          )}
+
+          <div className="flex items-center space-x-2 pt-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
+            <input 
+              id="publishAsCommunity"
+              type="checkbox" 
+              checked={publishAsCommunity} 
+              onChange={(e) => setPublishAsCommunity(e.target.checked)} 
+              className="h-4.5 w-4.5 rounded border-slate-300 text-emerald-650 focus:ring-emerald-500"
+            />
+            <label htmlFor="publishAsCommunity" className="cursor-pointer">
+              Publish as Official Community Solution (visible inside Community Solution Explorer)
+            </label>
+          </div>
+
+          {previewMode && (
+            <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 space-y-3">
+              <span className="text-[10px] font-black uppercase text-brand-600 tracking-wider block">✓ Live Answer Preview</span>
+              <div className="border border-slate-200 dark:border-slate-800 rounded-3xl p-6 bg-slate-50 dark:bg-slate-950/20">
+                <div className="text-xs text-slate-707 dark:text-slate-200 leading-relaxed font-semibold">
+                  {facultyAnswerType === 'text' && (
+                    <div className="whitespace-pre-line" dangerouslySetInnerHTML={{ __html: facultyText }} />
+                  )}
+                  {facultyAnswerType === 'image' && (
+                    <div className="space-y-2">
+                      {facultyImage ? (
+                        <img src={facultyImage} alt="Preview" className="max-h-60 object-contain rounded-xl" />
+                      ) : (
+                        <p className="text-slate-400 italic">No image uploaded yet.</p>
+                      )}
+                    </div>
+                  )}
+                  {facultyAnswerType === 'pdf' && (
+                    <div className="space-y-2">
+                      {facultyPdf ? (
+                        <iframe src={facultyPdf} className="w-full h-60 border-0 rounded-xl" title="PDF preview" />
+                      ) : (
+                        <p className="text-slate-400 italic">No PDF uploaded yet.</p>
+                      )}
+                    </div>
+                  )}
+                  {facultyAnswerType === 'multiple' && (
+                    <div className="space-y-3">
+                      {facultyText && <div className="mb-2" dangerouslySetInnerHTML={{ __html: facultyText }} />}
+                      {facultyFiles.length > 0 ? (
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          {facultyFiles.map((file, idx) => (
+                            <div key={idx} className="p-2 border border-slate-200 rounded-lg bg-white dark:bg-slate-900 truncate">
+                              📎 {file.name}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-slate-400 italic">No files attached yet.</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-3 pt-3 border-t border-slate-100 dark:border-slate-805">
+            <button
+              type="button"
+              disabled={publishLoading || draftSaving || ocrLoading}
+              onClick={() => handleSaveFacultyResolution(false)}
+              className="px-6 py-3 bg-brand-600 hover:bg-brand-700 text-white rounded-2xl text-xs font-black shadow-premium transition-all disabled:opacity-50 flex items-center space-x-1.5"
+            >
+              {publishLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+              <span>Publish Official Solution</span>
+            </button>
+
+            <button
+              type="button"
+              disabled={publishLoading || draftSaving || ocrLoading}
+              onClick={() => handleSaveFacultyResolution(true)}
+              className="px-5 py-3 bg-slate-105 hover:bg-slate-200 dark:bg-slate-850 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-300 rounded-2xl text-xs font-bold transition-all disabled:opacity-50 flex items-center space-x-1.5"
+            >
+              {draftSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              <span>Save Draft</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setPreviewMode(prev => !prev)}
+              className="px-5 py-3 bg-slate-50 hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-655 dark:text-slate-400 rounded-2xl text-xs font-bold border border-slate-200 dark:border-slate-800 transition-all"
+            >
+              {previewMode ? 'Hide Preview' : 'Preview'}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setFacultyText('');
+                setFacultyImage('');
+                setFacultyPdf('');
+                setFacultyFiles([]);
+                setPreviewMode(false);
+              }}
+              className="px-5 py-3 text-slate-500 hover:text-slate-800 hover:underline text-xs font-bold transition-all ml-auto"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderAnswerContent = (ans: any) => {
     if (!ans) return null;
     const format = ans.inputType || 'text';
@@ -524,6 +1372,10 @@ export const DoubtDetail: React.FC = () => {
     );
   };
 
+  if (isTeacher && isEscalated && doubt.status !== 'teacher_solved') {
+    return renderFacultyResolutionWorkspace();
+  }
+
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       {/* Doubt Details Header Card */}
@@ -561,7 +1413,39 @@ export const DoubtDetail: React.FC = () => {
         </div>
 
         <h1 className="text-xl md:text-2xl font-black text-slate-800 dark:text-slate-100">{doubt.title}</h1>
-        <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed whitespace-pre-line">{doubt.description}</p>
+        {doubt.inputType === 'text' ? (
+          <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed whitespace-pre-line mt-2">{doubt.description}</p>
+        ) : (
+          doubt.originalUploadUrl && (
+            <div className="mt-4">
+              {doubt.inputType === 'image' ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {(() => {
+                    let urls: string[] = [];
+                    if (doubt.originalUploadUrl.startsWith('[')) {
+                      try {
+                        urls = JSON.parse(doubt.originalUploadUrl);
+                      } catch (e) {
+                        urls = [doubt.originalUploadUrl];
+                      }
+                    } else {
+                      urls = [doubt.originalUploadUrl];
+                    }
+                    return urls.map((url, idx) => (
+                      <div key={idx} className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 p-2 flex items-center justify-center shadow-sm">
+                        <img src={url} alt={`Student upload ${idx + 1}`} className="max-h-[400px] object-contain" />
+                      </div>
+                    ));
+                  })()}
+                </div>
+              ) : (
+                <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 h-[500px] w-full">
+                  <iframe src={doubt.originalUploadUrl} className="w-full h-full border-none" title="Student pdf upload" />
+                </div>
+              )}
+            </div>
+          )
+        )}
 
         {/* Revealed Hints Section */}
         {hints.length > 0 && (
@@ -639,6 +1523,9 @@ export const DoubtDetail: React.FC = () => {
         </div>
 
       </div>
+
+      {/* Render Official Faculty Solution Card if solved by teacher */}
+      {renderOfficialSolutionCard()}
 
       {/* Celebrate Unlock Banner */}
       {celebrateUnlock && (
@@ -1445,83 +2332,7 @@ export const DoubtDetail: React.FC = () => {
         {/* Right Columns (AI Learning Assistant & Teacher Settings - 30% width on Desktop, sticky) */}
         <div className="col-span-1 lg:col-span-3 space-y-6 lg:sticky lg:top-6 self-start">
           
-          {/* Teacher Settings Panel (Visible only to Teachers) */}
-          {isTeacher && (
-            <div className="rounded-3xl border border-slate-100 bg-white p-6 shadow-premium dark:bg-[#1E293B] dark:border-slate-800 transition-colors duration-300 space-y-4">
-              <div className="flex items-center space-x-2 pb-2 border-b border-slate-100 dark:border-slate-800">
-                <Settings className="h-5 w-5 text-brand-655" />
-                <h3 className="text-base font-bold text-slate-855 dark:text-slate-100">Question Settings</h3>
-              </div>
-              
-              <form onSubmit={handleSaveSettings} className="space-y-4 text-xs font-semibold text-slate-700 dark:text-slate-300">
-                <div className="flex items-center justify-between">
-                  <label htmlFor="allowCommunitySolutions" className="cursor-pointer">Allow community solutions</label>
-                  <input 
-                    id="allowCommunitySolutions"
-                    type="checkbox" 
-                    checked={allowCommunitySolutions} 
-                    onChange={(e) => setAllowCommunitySolutions(e.target.checked)} 
-                    className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
-                  />
-                </div>
-                
-                <div className="flex items-center justify-between">
-                  <label htmlFor="hideCommunitySolutions" className="cursor-pointer">Hide solutions until first attempt</label>
-                  <input 
-                    id="hideCommunitySolutions"
-                    type="checkbox" 
-                    checked={hideCommunitySolutionsUntilFirstAttempt} 
-                    onChange={(e) => setHideCommunitySolutionsUntilFirstAttempt(e.target.checked)} 
-                    className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
-                  />
-                </div>
-                
-                <div className="flex items-center justify-between">
-                  <label htmlFor="allowUnlimitedAttempts" className="cursor-pointer">Allow unlimited attempts</label>
-                  <input 
-                    id="allowUnlimitedAttempts"
-                    type="checkbox" 
-                    checked={allowUnlimitedAttempts} 
-                    onChange={(e) => setAllowUnlimitedAttempts(e.target.checked)} 
-                    className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
-                  />
-                </div>
-                
-                {!allowUnlimitedAttempts && (
-                  <div className="flex items-center justify-between pl-4">
-                    <label htmlFor="maxAttempts">Set maximum attempts</label>
-                    <input 
-                      id="maxAttempts"
-                      type="number" 
-                      min={1}
-                      value={maxAttempts} 
-                      onChange={(e) => setMaxAttempts(e.target.value)} 
-                      className="w-16 p-1 border border-slate-200 rounded text-center bg-white dark:bg-slate-900 dark:border-slate-800 font-extrabold focus:outline-none"
-                    />
-                  </div>
-                )}
-                
-                <div className="flex items-center justify-between">
-                  <label htmlFor="allowAnswerEditing" className="cursor-pointer">Allow answer editing</label>
-                  <input 
-                    id="allowAnswerEditing"
-                    type="checkbox" 
-                    checked={allowAnswerEditing} 
-                    onChange={(e) => setAllowAnswerEditing(e.target.checked)} 
-                    className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
-                  />
-                </div>
-                
-                <button
-                  type="submit"
-                  disabled={isSavingSettings}
-                  className="w-full rounded-xl bg-brand-600 hover:bg-brand-700 py-2.5 text-xs font-bold text-white transition-all shadow-premium disabled:opacity-50"
-                >
-                  {isSavingSettings ? 'Saving Settings...' : 'Save Settings'}
-                </button>
-              </form>
-            </div>
-          )}
+
 
           <AILearningAssistant
             doubt={doubt}

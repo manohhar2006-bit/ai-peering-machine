@@ -24,7 +24,8 @@ export const requestHint = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ message: 'Maximum of 6 hints already revealed for this doubt.' });
     }
 
-    const hintContent = await AIService.generateHint(doubt.title, doubt.description, hintCount);
+    const queryDescription = doubt.inputType === 'text' || !doubt.inputType ? doubt.description : (doubt.extractedText || doubt.description);
+    const hintContent = await AIService.generateHint(doubt.title, queryDescription, hintCount);
 
     const hint = new HintHistory({
       doubtId,

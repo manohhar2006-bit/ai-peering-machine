@@ -566,7 +566,7 @@ export const StudentProfile: React.FC = () => {
         <div className="h-72 w-full text-slate-655 dark:text-slate-400 flex items-center justify-center">
           {chartData.length === 0 ? (
             <div className="text-xs text-slate-400 font-semibold bg-slate-50/50 dark:bg-slate-850/10 w-full h-full flex items-center justify-center rounded-2xl">
-              No performance data available.
+              Complete learning activities to generate your performance chart.
             </div>
           ) : (
             <ResponsiveContainer width="100%" height="100%">

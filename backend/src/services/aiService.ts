@@ -109,7 +109,7 @@ export class AIService {
 
       const answers = await Answer.find({ doubtId });
       const attempts = answers.length;
-      const doubtText = `${doubt.title}\n${doubt.description}`;
+      const doubtText = doubt.inputType === 'text' || !doubt.inputType ? `${doubt.title}\n${doubt.description}` : (doubt.extractedText || doubt.title);
 
       const result = await geminiService.shouldEscalate(doubtText, attempts, doubt.difficulty, 70);
       return {
@@ -140,7 +140,8 @@ export class AIService {
       }
 
       const answersText = answers.map(a => a.content);
-      const result = await geminiService.refereeAnswers(`${doubt.title}\n${doubt.description}`, answersText);
+      const doubtText = doubt.inputType === 'text' || !doubt.inputType ? `${doubt.title}\n${doubt.description}` : (doubt.extractedText || doubt.title);
+      const result = await geminiService.refereeAnswers(doubtText, answersText);
 
       const bestAns = answers[result.bestAnswerIndex] || answers[0];
       return {

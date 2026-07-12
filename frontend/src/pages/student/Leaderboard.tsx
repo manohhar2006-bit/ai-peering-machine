@@ -110,8 +110,7 @@ export const Leaderboard: React.FC = () => {
       {leaderboard.length === 0 ? (
         <div className="rounded-3xl bg-white border border-slate-100 p-12 text-center flex flex-col items-center justify-center space-y-3 dark:bg-[#1E293B] dark:border-slate-800 shadow-sm">
           <Trophy className="h-12 w-12 text-slate-300 dark:text-slate-700" />
-          <h3 className="font-bold text-slate-800 dark:text-slate-100">No leaderboard rankings available</h3>
-          <p className="text-sm text-slate-455">Complete your first question to generate analytics.</p>
+          <h3 className="font-bold text-slate-800 dark:text-slate-100">No rankings available yet.</h3>
         </div>
       ) : (
         <div className="rounded-3xl border border-slate-100 bg-white overflow-hidden shadow-sm dark:bg-[#1E293B] dark:border-slate-800 transition-colors duration-300">

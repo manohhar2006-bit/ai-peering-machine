@@ -378,22 +378,51 @@ export const getWorkloadData = async (req: AuthRequest, res: Response) => {
 // GET /api/analytics/weekly-trend
 export const getWeeklyTrendData = async (req: AuthRequest, res: Response) => {
   try {
-    const analytics = await FacultyAnalytics.find()
-      .sort({ year: 1, weekNumber: 1 })
-      .limit(6);
+    const trend = [];
+    const now = new Date();
 
-    if (analytics.length === 0) {
-      return res.status(200).json([]);
+    for (let i = 5; i >= 0; i--) {
+      const startOfWeek = new Date();
+      startOfWeek.setDate(now.getDate() - (i + 1) * 7 + 1);
+      startOfWeek.setHours(0, 0, 0, 0);
+
+      const endOfWeek = new Date();
+      endOfWeek.setDate(now.getDate() - i * 7);
+      endOfWeek.setHours(23, 59, 59, 999);
+
+      const doubtsCount = await Doubt.countDocuments({
+        createdAt: { $gte: startOfWeek, $lte: endOfWeek }
+      });
+      const peerSolvedCount = await Doubt.countDocuments({
+        createdAt: { $gte: startOfWeek, $lte: endOfWeek },
+        status: 'peer_solved'
+      });
+      const aiHintedCount = await Doubt.countDocuments({
+        createdAt: { $gte: startOfWeek, $lte: endOfWeek },
+        status: 'ai_hinted'
+      });
+      const escalatedCount = await Doubt.countDocuments({
+        createdAt: { $gte: startOfWeek, $lte: endOfWeek },
+        status: 'escalated'
+      });
+
+      const workloadReductionPercent = doubtsCount > 0 
+        ? Math.round(((peerSolvedCount + aiHintedCount) / doubtsCount) * 100)
+        : 0;
+
+      trend.push({
+        week: `Week ${6 - i}`,
+        peerSolved: peerSolvedCount,
+        aiHinted: aiHintedCount,
+        escalated: escalatedCount,
+        workloadReduction: workloadReductionPercent
+      });
     }
 
-    // Map FacultyAnalytics to the expected response structure
-    const trend = analytics.map((a, index) => ({
-      week: `Week ${index + 1}`,
-      peerSolved: a.peerSolved,
-      aiHinted: a.aiHinted,
-      escalated: a.escalated,
-      workloadReduction: a.workloadReductionPercent
-    }));
+    const totalActivity = trend.reduce((sum, item) => sum + item.peerSolved + item.aiHinted + item.escalated, 0);
+    if (totalActivity === 0) {
+      return res.status(200).json([]);
+    }
 
     res.status(200).json(trend);
   } catch (error) {

@@ -13,19 +13,15 @@ import {
   File as FileIcon,
   UploadCloud,
   AlertTriangle,
-  Copy,
+  X,
   Trash2,
-  Check,
-  RefreshCw,
-  ArrowRight,
-  ChevronLeft
+  ArrowRight
 } from 'lucide-react';
 
 const API_URL = 'http://localhost:5000/api';
 
 type InputType = 'text' | 'image' | 'pdf';
-type ProcessingState = 'idle' | 'uploading' | 'extracting' | 'extracted' | 'error';
-type ActiveStep = 'form' | 'review' | 'preview' | 'success';
+type ActiveStep = 'form' | 'success';
 
 export const AskDoubt: React.FC = () => {
   const { refreshProfile } = useAuth();
@@ -35,42 +31,31 @@ export const AskDoubt: React.FC = () => {
   // Flow State
   const [activeStep, setActiveStep] = useState<ActiveStep>('form');
 
-  // Step 1: Subject State
+  // Form Fields
+  const [title, setTitle] = useState('');
+  const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
   const [isCustomSubject, setIsCustomSubject] = useState(false);
   const [subjectCode, setSubjectCode] = useState('');
   const [customSubject, setCustomSubject] = useState('');
   const [subjects, setSubjects] = useState<any[]>([]);
-
-  // Step 2 & 3: Doubt Input & Mode
-  const [question, setQuestion] = useState('');
   const [inputType, setInputType] = useState<InputType>('text');
+  const [question, setQuestion] = useState('');
 
-  // Image/PDF Upload & OCR Processing
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  // File Upload State
+  const [localFiles, setLocalFiles] = useState<{ file: File; previewUrl: string }[]>([]);
+  const [uploadedUrls, setUploadedUrls] = useState<string[]>([]);
   const [isDragging, setIsDragging] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [processingState, setProcessingState] = useState<ProcessingState>('idle');
+  const [uploading, setUploading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const [extractedText, setExtractedText] = useState('');
-  const [originalUploadUrl, setOriginalUploadUrl] = useState('');
 
-  // Step 4: AI Review Editable text
-  const [editedExtractedText, setEditedExtractedText] = useState('');
-  const [copied, setCopied] = useState(false);
-
-  // Step 5 & 6: AI Analysis & Preview
-  const [analyzing, setAnalyzing] = useState(false);
+  // Success Step Data
   const [analysisResult, setAnalysisResult] = useState<{
     topic: string;
     difficulty: 'easy' | 'medium' | 'hard';
     keywords: string[];
     explanation?: string;
   } | null>(null);
-  const [aiError, setAiError] = useState<'busy' | 'timeout' | null>(null);
-  const [lastAnalyzedText, setLastAnalyzedText] = useState('');
-
-  // Submission
-  const [submitting, setSubmitting] = useState(false);
   const [peers, setPeers] = useState<any[]>([]);
 
   useEffect(() => {
@@ -88,26 +73,16 @@ export const AskDoubt: React.FC = () => {
     fetchSubjects();
   }, []);
 
-  // Handle Tab Switch
   const handleInputTypeChange = (type: InputType) => {
     setInputType(type);
-    // Reset file-related states if switching
-    if (type !== inputType) {
-      setUploadedFile(null);
-      setUploadProgress(0);
-      setProcessingState('idle');
-      setErrorMessage('');
-      setExtractedText('');
-      setEditedExtractedText('');
-      setOriginalUploadUrl('');
-      // If going to text mode, keep question. If entering image/pdf, we clear question until OCR is approved
-      if (type !== 'text') {
-        setQuestion('');
-      }
-    }
+    setErrorMessage('');
+    // Clear uploaded files when switching types
+    localFiles.forEach(f => URL.revokeObjectURL(f.previewUrl));
+    setLocalFiles([]);
+    setUploadedUrls([]);
   };
 
-  // Drag and Drop handlers
+  // Drag and drop handlers
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(true);
@@ -122,212 +97,136 @@ export const AskDoubt: React.FC = () => {
     setIsDragging(false);
     const files = e.dataTransfer.files;
     if (files && files.length > 0) {
-      processSelectedFile(files[0]);
+      processSelectedFiles(Array.from(files));
     }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files.length > 0) {
-      processSelectedFile(files[0]);
+      processSelectedFiles(Array.from(files));
     }
   };
 
-  // Process and upload file
-  const processSelectedFile = async (file: File) => {
+  const processSelectedFiles = async (files: File[]) => {
     setErrorMessage('');
-    setUploadedFile(file);
-
-    // Validate type and size limits
-    const isImage = file.type.startsWith('image/');
-    const isPdf = file.type === 'application/pdf';
-
-    if (inputType === 'image') {
-      if (!isImage) {
-        setErrorMessage('Unsupported file type. Please upload a PNG, JPG, JPEG, or WEBP image.');
-        setProcessingState('error');
-        return;
-      }
-      if (file.size > 10 * 1024 * 1024) {
-        setErrorMessage('Large file detected. Image size must not exceed 10 MB.');
-        setProcessingState('error');
-        return;
-      }
-    } else if (inputType === 'pdf') {
-      if (!isPdf) {
+    
+    if (inputType === 'pdf') {
+      const file = files[0];
+      if (file.type !== 'application/pdf') {
         setErrorMessage('Unsupported file type. Please upload a PDF document.');
-        setProcessingState('error');
         return;
       }
       if (file.size > 20 * 1024 * 1024) {
         setErrorMessage('Large file detected. PDF size must not exceed 20 MB.');
-        setProcessingState('error');
         return;
       }
-    }
+      
+      const previewUrl = URL.createObjectURL(file);
+      setLocalFiles([{ file, previewUrl }]);
+      uploadFiles([file]);
+    } else if (inputType === 'image') {
+      // Filter out non-images
+      const validImages = files.filter(f => f.type.startsWith('image/'));
+      if (validImages.length === 0) {
+        setErrorMessage('Unsupported file type. Please upload a PNG, JPG, JPEG, or WEBP image.');
+        return;
+      }
+      // Check sizes
+      const oversized = validImages.some(f => f.size > 10 * 1024 * 1024);
+      if (oversized) {
+        setErrorMessage('One of the images exceeds the 10 MB limit.');
+        return;
+      }
 
-    // Trigger upload and OCR
-    uploadAndExtract(file);
+      const newLocalFiles = validImages.map(f => ({
+        file: f,
+        previewUrl: URL.createObjectURL(f)
+      }));
+
+      // Merge if multiple images are allowed
+      setLocalFiles(prev => {
+        const updated = [...prev, ...newLocalFiles];
+        uploadFiles(updated.map(item => item.file));
+        return updated;
+      });
+    }
   };
 
-  const uploadAndExtract = async (file: File) => {
-    setProcessingState('uploading');
-    setUploadProgress(10);
-
-    const formData = new FormData();
-    formData.append('file', file);
+  const uploadFiles = async (files: File[]) => {
+    setUploading(true);
+    setErrorMessage('');
+    const token = localStorage.getItem('token');
+    const urls: string[] = [];
 
     try {
-      // Simulate/Show upload progress
-      const token = localStorage.getItem('token');
-      const response = await axios.post(`${API_URL}/ai/ocr`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-          Authorization: token ? `Bearer ${token}` : ''
-        },
-        onUploadProgress: (progressEvent) => {
-          const total = progressEvent.total || file.size;
-          const current = progressEvent.loaded;
-          const percent = Math.min(Math.round((current * 100) / total), 95);
-          setUploadProgress(percent);
-        }
-      });
-
-      setUploadProgress(100);
-      setProcessingState('extracting');
-
-      // Add a small delay for extraction simulation feel
-      await new Promise((resolve) => setTimeout(resolve, 800));
-
-      const { extractedText, originalUploadUrl } = response.data;
-
-      setExtractedText(extractedText);
-      setEditedExtractedText(extractedText);
-      setOriginalUploadUrl(originalUploadUrl);
-      setProcessingState('extracted');
-      
-      // Move to review step
-      setActiveStep('review');
+      for (const file of files) {
+        const formData = new FormData();
+        formData.append('file', file);
+        const response = await axios.post(`${API_URL}/ai/upload`, formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+            Authorization: token ? `Bearer ${token}` : ''
+          }
+        });
+        urls.push(response.data.originalUploadUrl);
+      }
+      setUploadedUrls(urls);
     } catch (err: any) {
-      console.error('File extraction failed:', err);
-      const msg = err.response?.data?.message || 'Network failure or server error during text extraction.';
-      setErrorMessage(msg);
-      setProcessingState('error');
+      console.error('File upload failed:', err);
+      setErrorMessage(err.response?.data?.message || 'Failed to upload files to backend.');
+    } finally {
+      setUploading(false);
     }
   };
 
-  // OCR Action Handlers
-  const handleCopyText = () => {
-    navigator.clipboard.writeText(editedExtractedText);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
+  const handleRemoveFile = (index: number) => {
+    const fileToRemove = localFiles[index];
+    URL.revokeObjectURL(fileToRemove.previewUrl);
+    
+    const updatedLocal = localFiles.filter((_, i) => i !== index);
+    setLocalFiles(updatedLocal);
 
-  const handleClearText = () => {
-    setEditedExtractedText('');
-  };
+    const updatedUrls = uploadedUrls.filter((_, i) => i !== index);
+    setUploadedUrls(updatedUrls);
 
-  const handleReextract = () => {
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+    // Re-upload remaining files if any, to be safe
+    if (updatedLocal.length > 0) {
+      uploadFiles(updatedLocal.map(item => item.file));
     }
-    setUploadedFile(null);
-    setUploadProgress(0);
-    setProcessingState('idle');
-    setExtractedText('');
-    setEditedExtractedText('');
-    setOriginalUploadUrl('');
-    setActiveStep('form');
   };
 
-  // OCR Approval -> AI Analysis (Step 5)
-  const handleApproveOCR = async () => {
-    if (!editedExtractedText.trim()) {
-      setErrorMessage('Extracted text cannot be empty. Please edit or re-extract.');
+  const handleFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim()) {
+      setErrorMessage('Question Title is required.');
       return;
     }
-    
-    // Set final question text
-    setQuestion(editedExtractedText);
-    runAIAnalysis(editedExtractedText);
-  };
-
-  // Text Mode Direct Submit -> AI Analysis
-  const handleTextModeNext = () => {
-    if (!question.trim()) return;
-    runAIAnalysis(question);
-  };
-
-  const runAIAnalysis = async (textToAnalyze: string) => {
-    setAnalyzing(true);
-    setAiError(null);
-    setErrorMessage('');
-    setLastAnalyzedText(textToAnalyze);
-    window.dispatchEvent(new CustomEvent('ai-status', { detail: 'busy' }));
-    
-    const subjectName = isCustomSubject
-      ? customSubject
-      : subjects.find((s) => s.code === subjectCode)?.name || 'General';
-
-    try {
-      const token = localStorage.getItem('token');
-      const response = await axios.post(
-        `${API_URL}/ai/analyze-doubt`,
-        {
-          doubtText: textToAnalyze,
-          subject: subjectName
-        },
-        {
-          headers: { Authorization: token ? `Bearer ${token}` : '' }
-        }
-      );
-
-      // Check if backend returned structured error
-      if (response.data && response.data.success === false && response.data.status === 'AI_BUSY') {
-        window.dispatchEvent(new CustomEvent('ai-status', { detail: 'offline' }));
-        setAiError('busy');
-        setAnalyzing(false);
-        return;
-      }
-
-      setAnalysisResult({
-        topic: response.data.topic || 'General Concept',
-        difficulty: response.data.difficulty || 'medium',
-        keywords: response.data.keyTerms || [],
-        explanation: response.data.conceptExplanation
-      });
-
-      window.dispatchEvent(new CustomEvent('ai-status', { detail: 'online' }));
-      setActiveStep('preview');
-    } catch (err: any) {
-      console.error('AI analysis failed:', err);
-      window.dispatchEvent(new CustomEvent('ai-status', { detail: 'offline' }));
-      
-      const errMsg = err.response?.data?.message || err.message || '';
-      const isTimeout = errMsg.includes('timeout') || errMsg.includes('TIMEOUT') || err.code === 'ECONNABORTED';
-
-      if (isTimeout) {
-        setAiError('timeout');
-      } else {
-        setAiError('busy');
-      }
-    } finally {
-      setAnalyzing(false);
+    if (inputType === 'text' && !question.trim()) {
+      setErrorMessage('Question details are required.');
+      return;
     }
-  };
+    if (inputType !== 'text' && uploadedUrls.length === 0) {
+      setErrorMessage('Please upload at least one image or PDF.');
+      return;
+    }
 
-  // Final Database Save (Step 7)
-  const handleFinalSubmit = async () => {
     setSubmitting(true);
     setErrorMessage('');
 
     try {
       const token = localStorage.getItem('token');
+      // If image upload is multiple, send as a JSON string array to originalUploadUrl
+      const finalUploadUrl = inputType === 'text' 
+        ? '' 
+        : (inputType === 'image' ? JSON.stringify(uploadedUrls) : uploadedUrls[0]);
+
       const payload = {
-        question,
+        title,
+        difficulty,
+        question: inputType === 'text' ? question : title,
         inputType,
-        originalUploadUrl,
-        extractedText,
+        originalUploadUrl: finalUploadUrl,
         subjectCode: isCustomSubject ? undefined : subjectCode,
         customSubject: isCustomSubject ? customSubject : undefined
       };
@@ -336,19 +235,23 @@ export const AskDoubt: React.FC = () => {
         headers: { Authorization: token ? `Bearer ${token}` : '' }
       });
 
-      setPeers(response.data.suggestedPeers || []);
+      const { doubt, analysis, suggestedPeers } = response.data;
+      setAnalysisResult({
+        topic: analysis?.topic || doubt?.topic || 'General Topic',
+        difficulty: analysis?.difficulty || doubt?.difficulty || difficulty,
+        keywords: doubt?.keywords || [],
+        explanation: analysis?.explanation || ''
+      });
+
+      setPeers(suggestedPeers || []);
       setActiveStep('success');
-      await refreshProfile(); // Refresh student XP
+      await refreshProfile();
     } catch (err: any) {
-      console.error('Final doubt creation failed:', err);
-      setErrorMessage(err.response?.data?.message || 'Failed to save doubt. Please try again.');
+      console.error('Doubt submission failed:', err);
+      setErrorMessage(err.response?.data?.message || 'Failed to submit doubt. Please try again.');
     } finally {
       setSubmitting(false);
     }
-  };
-
-  const handleBackToEdit = () => {
-    setActiveStep('form');
   };
 
   const handleDone = () => {
@@ -364,87 +267,25 @@ export const AskDoubt: React.FC = () => {
         </div>
         <div>
           <h2 className="text-3xl font-black text-slate-800 dark:text-slate-100 font-sans tracking-tight">
-            Initiate a Doubt Quest
+            Ask a Doubt
           </h2>
           <p className="text-xs md:text-sm text-slate-400 font-bold uppercase tracking-wider mt-0.5">
-            Deploy your query through Text, Image, or PDF with AI-routing guidance.
+            Submit your educational query through Text, Image, or PDF.
           </p>
         </div>
       </div>
 
       {/* Main Flow Card */}
       <div className="premium-card p-8">
-        
-        {/* STEP progress indicator */}
-        <div className="flex items-center justify-between mb-8 border-b border-slate-100 dark:border-slate-800 pb-4">
-          <div className="flex space-x-6 overflow-x-auto py-1">
-            <div className={`flex items-center space-x-2 text-[10px] font-black uppercase tracking-wider ${activeStep === 'form' ? 'text-brand-600 dark:text-brand-400' : 'text-slate-400'}`}>
-              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] border ${activeStep === 'form' ? 'border-brand-500 bg-brand-50 text-brand-600 dark:bg-brand-950/30' : 'border-slate-200'}`}>1</span>
-              <span>Input</span>
-            </div>
-            {inputType !== 'text' && (
-              <div className={`flex items-center space-x-2 text-[10px] font-black uppercase tracking-wider ${activeStep === 'review' ? 'text-brand-600 dark:text-brand-400' : 'text-slate-400'}`}>
-                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] border ${activeStep === 'review' ? 'border-brand-500 bg-brand-50 text-brand-600 dark:bg-brand-950/30' : 'border-slate-200'}`}>2</span>
-                <span>Review OCR</span>
-              </div>
-            )}
-            <div className={`flex items-center space-x-2 text-[10px] font-black uppercase tracking-wider ${activeStep === 'preview' ? 'text-brand-600 dark:text-brand-400' : 'text-slate-400'}`}>
-              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] border ${activeStep === 'preview' ? 'border-brand-500 bg-brand-50 text-brand-600 dark:bg-brand-950/30' : 'border-slate-200'}`}>{inputType === 'text' ? '2' : '3'}</span>
-              <span>Preview</span>
-            </div>
-          </div>
-
-          {activeStep !== 'form' && activeStep !== 'success' && (
-            <button
-              onClick={handleBackToEdit}
-              className="text-xs font-bold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 flex items-center space-x-1"
-            >
-              <ChevronLeft className="h-4 w-4" />
-              <span>Modify Details</span>
-            </button>
-          )}
-        </div>
-
-        {aiError ? (
-          <div className="bg-rose-50/50 dark:bg-rose-950/10 border border-rose-100 dark:border-rose-900/35 p-8 rounded-3xl text-center space-y-5 animate-scale-in">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-rose-100 dark:bg-rose-955/40 text-rose-600 mx-auto shadow-sm">
-              <AlertTriangle className="h-7 w-7" />
-            </div>
-            <h4 className="text-lg font-black text-slate-800 dark:text-slate-100">AI Service Offline</h4>
-            <p className="text-sm font-semibold text-slate-500 dark:text-slate-350 leading-relaxed max-w-md mx-auto">
-              {aiError === 'timeout'
-                ? 'The AI service is taking longer than expected. Please try again.'
-                : 'The AI service is temporarily busy due to high demand. Please wait a few seconds and try again.'}
-            </p>
-            <div className="flex justify-center gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setAiError(null)}
-                className="px-5 py-2.5 bg-slate-105 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-black transition-all cursor-pointer"
-              >
-                Go Back
-              </button>
-              <button
-                type="button"
-                onClick={() => runAIAnalysis(lastAnalyzedText)}
-                className="inline-flex items-center space-x-2 px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-black shadow-md transition-all cursor-pointer"
-              >
-                <RefreshCw className="h-3.5 w-3.5" />
-                <span>Retry AI Analysis</span>
-              </button>
-            </div>
-          </div>
-        ) : (
-          <>
-            {activeStep === 'form' && (
-              <div className="space-y-8 animate-fade-in">
-            {/* Subject selector (Step 1) */}
-            <div className="space-y-4">
+        {activeStep === 'form' ? (
+          <form onSubmit={handleFormSubmit} className="space-y-6">
+            
+            {/* Subject Selector */}
+            <div className="space-y-3">
               <div className="flex items-center justify-between flex-wrap gap-3">
                 <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
-                  Subject Classification
+                  Subject
                 </label>
-                {/* Elegant Toggle */}
                 <div className="flex p-1 bg-slate-50 rounded-xl dark:bg-[#0F172A] border border-slate-100 dark:border-slate-800/40">
                   <button
                     type="button"
@@ -452,10 +293,9 @@ export const AskDoubt: React.FC = () => {
                     className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 cursor-pointer ${
                       !isCustomSubject
                         ? 'bg-white text-slate-850 shadow-sm dark:bg-[#1E293B] dark:text-slate-105'
-                        : 'text-slate-400 hover:text-slate-650 dark:text-slate-400 dark:hover:text-slate-200'
+                        : 'text-slate-400 hover:text-slate-650'
                     }`}
                   >
-                    <span className={`w-2 h-2 rounded-full border border-slate-300 dark:border-slate-600 flex items-center justify-center ${!isCustomSubject ? 'bg-brand-500 border-transparent' : ''}`} />
                     <span>Select Subject</span>
                   </button>
                   <button
@@ -464,16 +304,14 @@ export const AskDoubt: React.FC = () => {
                     className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 cursor-pointer ${
                       isCustomSubject
                         ? 'bg-white text-slate-850 shadow-sm dark:bg-[#1E293B] dark:text-slate-105'
-                        : 'text-slate-400 hover:text-slate-650 dark:text-slate-400 dark:hover:text-slate-200'
+                        : 'text-slate-400 hover:text-slate-650'
                     }`}
                   >
-                    <span className={`w-2 h-2 rounded-full border border-slate-300 dark:border-slate-600 flex items-center justify-center ${isCustomSubject ? 'bg-brand-500 border-transparent' : ''}`} />
                     <span>Enter Subject</span>
                   </button>
                 </div>
               </div>
 
-              {/* Show dropdown or input based on toggle */}
               {!isCustomSubject ? (
                 <select
                   value={subjectCode}
@@ -496,16 +334,54 @@ export const AskDoubt: React.FC = () => {
                   required
                   value={customSubject}
                   onChange={(e) => setCustomSubject(e.target.value)}
-                  placeholder="e.g., Theory of Computation, Compiler Design, Mathematics III"
+                  placeholder="e.g., Database Systems, Mathematics III"
                   className="w-full premium-input text-sm font-semibold"
                 />
               )}
             </div>
 
-            {/* Input Method Selection Segmented Tabs (Step 3) */}
-            <div className="space-y-4">
+            {/* Difficulty Selector */}
+            <div className="space-y-3">
               <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">
-                Input Method
+                Difficulty
+              </label>
+              <div className="flex p-1 bg-slate-50 rounded-xl dark:bg-[#0F172A] border border-slate-105 dark:border-slate-800/40 max-w-sm">
+                {(['easy', 'medium', 'hard'] as const).map((diff) => (
+                  <button
+                    key={diff}
+                    type="button"
+                    onClick={() => setDifficulty(diff)}
+                    className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-black uppercase transition-all cursor-pointer ${
+                      difficulty === diff
+                        ? 'bg-brand-600 text-white shadow-sm'
+                        : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-205'
+                    }`}
+                  >
+                    {diff}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Question Title */}
+            <div className="space-y-3">
+              <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">
+                Question Title
+              </label>
+              <input
+                type="text"
+                required
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Give your doubt a concise title..."
+                className="w-full premium-input text-sm font-semibold"
+              />
+            </div>
+
+            {/* Submission Type Selection */}
+            <div className="space-y-3">
+              <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">
+                Submission Type
               </label>
               <div className="grid grid-cols-3 gap-2 p-1.5 bg-slate-50 rounded-2xl dark:bg-[#0F172A] max-w-md border border-slate-100 dark:border-slate-800/40">
                 {(['text', 'image', 'pdf'] as const).map((mode) => (
@@ -516,7 +392,7 @@ export const AskDoubt: React.FC = () => {
                     className={`py-2 px-4 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center space-x-2 cursor-pointer active:scale-95 ${
                       inputType === mode
                         ? 'bg-brand-600 text-white shadow-premium'
-                        : 'text-slate-500 hover:text-slate-805 dark:text-slate-400 dark:hover:text-slate-205'
+                        : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
                     }`}
                   >
                     {mode === 'text' && <FileText className="h-4.5 w-4.5" />}
@@ -528,10 +404,10 @@ export const AskDoubt: React.FC = () => {
               </div>
             </div>
 
-             {/* Question Text Area (Step 2) */}
-            <div className="space-y-2">
+            {/* Content Upload Area / Rich Textarea */}
+            <div className="space-y-3">
               <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">
-                Question Details
+                Upload Area
               </label>
 
               {inputType === 'text' ? (
@@ -540,12 +416,12 @@ export const AskDoubt: React.FC = () => {
                   required
                   value={question}
                   onChange={(e) => setQuestion(e.target.value)}
-                  placeholder="Type your complete doubt here or upload an image/PDF."
+                  placeholder="Type your complete doubt question details here..."
                   className="w-full premium-input font-semibold leading-relaxed p-5 text-sm"
                 />
               ) : (
                 <div className="space-y-4">
-                  {/* Upload Cards (Step 8) */}
+                  {/* Dropzone */}
                   <div
                     onDragOver={handleDragOver}
                     onDragLeave={handleDragLeave}
@@ -554,339 +430,135 @@ export const AskDoubt: React.FC = () => {
                     className={`group relative border-2 border-dashed rounded-2xl p-8 text-center flex flex-col items-center justify-center cursor-pointer transition-all duration-300 ${
                       isDragging
                         ? 'border-brand-500 bg-brand-50/20 dark:bg-brand-950/10'
-                        : 'border-slate-200 hover:border-brand-450 bg-slate-50/40 hover:bg-slate-50 dark:border-slate-800 dark:bg-[#0F172A]/30 dark:hover:bg-[#0F172A]/60 shadow-sm'
+                        : 'border-slate-200 hover:border-brand-450 bg-slate-55/45 hover:bg-slate-55 dark:border-slate-800 dark:bg-[#0F172A]/30 dark:hover:bg-[#0F172A]/60 shadow-sm'
                     }`}
                   >
                     <input
                       type="file"
                       ref={fileInputRef}
                       onChange={handleFileChange}
+                      multiple={inputType === 'image'}
                       accept={inputType === 'image' ? 'image/png, image/jpeg, image/jpg, image/webp' : 'application/pdf'}
                       className="hidden"
                     />
 
-                    {processingState === 'idle' && (
-                      <div className="space-y-4">
-                        <div className="mx-auto w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 group-hover:text-brand-500 group-hover:bg-brand-50 dark:bg-[#0F172A] dark:group-hover:bg-brand-950/20 transition-all">
+                    <div className="space-y-4">
+                      <div className="mx-auto w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 group-hover:text-brand-500 group-hover:bg-brand-50 dark:bg-[#0F172A] dark:group-hover:bg-brand-950/20 transition-all">
+                        {uploading ? (
+                          <Loader2 className="h-8 w-8 animate-spin text-brand-500" />
+                        ) : (
                           <UploadCloud className="h-8 w-8" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-bold text-slate-700 dark:text-slate-200">
-                            Drag and drop your {inputType === 'image' ? 'image' : 'PDF'} here
-                          </p>
-                          <p className="text-xs text-slate-400 mt-1">
-                            or click to browse your local filesystem
-                          </p>
-                        </div>
-                        <div className="flex items-center justify-center space-x-4 text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">
-                          <span>Max size: {inputType === 'image' ? '10 MB' : '20 MB'}</span>
-                          <span>•</span>
-                          <span>Format: {inputType === 'image' ? 'PNG, JPG, JPEG, WEBP' : 'PDF'}</span>
-                        </div>
+                        )}
                       </div>
-                    )}
-
-                    {/* Progress Bar (Step 8) */}
-                    {(processingState === 'uploading' || processingState === 'extracting') && (
-                      <div className="w-full max-w-md space-y-4 py-4">
-                        <div className="flex items-center justify-center space-x-3 text-slate-600 dark:text-slate-300">
-                          <Loader2 className="h-5 w-5 animate-spin text-brand-500" />
-                          <span className="text-xs font-bold uppercase tracking-wider">
-                            {processingState === 'uploading' ? 'Uploading media...' : 'AI Extracting content...'}
-                          </span>
-                        </div>
-                        <div className="w-full h-2.5 bg-slate-150 rounded-full overflow-hidden dark:bg-slate-800">
-                          <div
-                            className="h-full bg-gradient-to-r from-brand-500 to-accent-500 rounded-full transition-all duration-300"
-                            style={{ width: `${uploadProgress}%` }}
-                          />
-                        </div>
-                        <p className="text-xs font-extrabold text-slate-400">{uploadProgress}% Complete</p>
+                      <div>
+                        <p className="text-sm font-bold text-slate-700 dark:text-slate-205">
+                          {uploading ? 'Uploading attachment...' : `Drag and drop your ${inputType === 'image' ? 'images' : 'PDF'} here`}
+                        </p>
+                        <p className="text-xs text-slate-400 mt-1">
+                          or click to browse your files
+                        </p>
                       </div>
-                    )}
-
-                    {processingState === 'error' && (
-                      <div className="space-y-4 py-2">
-                        <div className="mx-auto w-12 h-12 rounded-full bg-red-50 text-red-500 flex items-center justify-center dark:bg-red-950/20">
-                          <AlertTriangle className="h-6 w-6" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-bold text-red-500">Processing Failed</p>
-                          <p className="text-xs text-slate-450 mt-1 max-w-sm mx-auto leading-relaxed">
-                            {errorMessage}
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (uploadedFile) uploadAndExtract(uploadedFile);
-                          }}
-                          className="px-4 py-2 bg-red-50 text-red-650 hover:bg-red-100 rounded-xl text-xs font-bold dark:bg-red-950/30 dark:text-red-400 transition-all"
-                        >
-                          Retry Extraction
-                        </button>
+                      <div className="flex items-center justify-center space-x-4 text-[10px] text-slate-450 font-extrabold uppercase tracking-wider">
+                        <span>Max size: {inputType === 'image' ? '10 MB' : '20 MB'}</span>
+                        <span>•</span>
+                        <span>Format: {inputType === 'image' ? 'PNG, JPG, JPEG, WEBP' : 'PDF'}</span>
                       </div>
-                    )}
+                    </div>
                   </div>
+
+                  {/* Attachment Previews */}
+                  {localFiles.length > 0 && (
+                    <div className="border border-slate-100 dark:border-slate-800 rounded-2xl p-4 bg-slate-50/50 dark:bg-[#0F172A]/20 space-y-3">
+                      <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 block">File Preview</span>
+                      
+                      {inputType === 'image' ? (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                          {localFiles.map((fileItem, idx) => (
+                            <div key={idx} className="relative group rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#1E293B] aspect-square flex items-center justify-center">
+                              <img
+                                src={fileItem.previewUrl}
+                                alt={`preview-${idx}`}
+                                className="max-h-full max-w-full object-contain"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveFile(idx)}
+                                className="absolute top-1.5 right-1.5 p-1 bg-red-600 hover:bg-red-700 text-white rounded-full transition-all shadow-md"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        localFiles.map((fileItem, idx) => (
+                          <div key={idx} className="flex flex-col space-y-3 bg-white dark:bg-[#1E293B] p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+                            <div className="flex justify-between items-center text-xs">
+                              <div className="flex items-center space-x-2 text-slate-700 dark:text-slate-200 font-bold">
+                                <FileIcon className="h-4.5 w-4.5 text-red-500" />
+                                <span>{fileItem.file.name} ({(fileItem.file.size / (1024 * 1024)).toFixed(2)} MB)</span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveFile(idx)}
+                                className="text-slate-400 hover:text-red-500 p-1 rounded-lg"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                            <div className="h-80 w-full rounded-lg overflow-hidden border border-slate-105 dark:border-slate-800">
+                              <iframe
+                                src={fileItem.previewUrl}
+                                title="PDF Preview"
+                                className="w-full h-full border-none"
+                              />
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
 
-            {/* Error displays */}
-            {errorMessage && processingState !== 'error' && (
+            {errorMessage && (
               <div className="p-4 bg-red-50 border border-red-100 rounded-2xl flex items-start space-x-3 text-red-600 dark:bg-red-950/15 dark:border-red-900/30">
                 <AlertTriangle className="h-5 w-5 flex-shrink-0 mt-0.5" />
                 <span className="text-xs font-semibold leading-relaxed">{errorMessage}</span>
               </div>
             )}
 
-            {/* Submit / Proceed bar */}
+            {/* Submit Question Bar */}
             <div className="flex justify-end pt-4 border-t border-slate-50 dark:border-slate-800">
-              {inputType === 'text' ? (
-                <button
-                  type="button"
-                  onClick={handleTextModeNext}
-                  disabled={!question.trim() || analyzing}
-                  className="rounded-2xl bg-brand-600 px-6 py-3.5 text-sm font-bold text-white shadow-premium hover:bg-brand-700 transition-all flex items-center space-x-2 disabled:opacity-40 disabled:pointer-events-none"
-                >
-                  {analyzing ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      <span>AI Analyzing Doubt...</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>Review & Preview</span>
-                      <ArrowRight className="h-4 w-4" />
-                    </>
-                  )}
-                </button>
-              ) : (
-                <div className="text-xs font-bold text-slate-400">
-                  Please upload a file to proceed with AI extraction.
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* ============================================================== */}
-        {/* STEP 4: AI REVIEW EXTRACTED TEXT (Step 4) */}
-        {/* ============================================================== */}
-        {activeStep === 'review' && (
-          <div className="space-y-6 animate-fade-in">
-            <div className="bg-emerald-50/50 p-4 rounded-2xl border border-emerald-100/50 flex items-center space-x-3 text-emerald-700 dark:bg-emerald-950/10 dark:border-emerald-900/20">
-              <div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center flex-shrink-0">
-                <Check className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-xs font-extrabold uppercase tracking-wide">AI Text Extraction Successful</p>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Please review, edit, or copy the extracted text before final submission approval.</p>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <label className="text-xs font-bold uppercase text-slate-455 tracking-wider">
-                  AI Extracted Question
-                </label>
-
-                {/* Toolbar options: Copy, Clear, Re-extract */}
-                <div className="flex items-center space-x-3 text-slate-400">
-                  <button
-                    type="button"
-                    onClick={handleCopyText}
-                    className="p-1.5 hover:text-slate-700 dark:hover:text-slate-200 transition-colors flex items-center space-x-1 text-xs font-bold"
-                    title="Copy to Clipboard"
-                  >
-                    {copied ? <Check className="h-4.5 w-4.5 text-emerald-500" /> : <Copy className="h-4.5 w-4.5" />}
-                    <span>{copied ? 'Copied' : 'Copy'}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleClearText}
-                    className="p-1.5 hover:text-slate-700 dark:hover:text-slate-200 transition-colors flex items-center space-x-1 text-xs font-bold"
-                    title="Clear Textarea"
-                  >
-                    <Trash2 className="h-4.5 w-4.5" />
-                    <span>Clear</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleReextract}
-                    className="p-1.5 hover:text-slate-700 dark:hover:text-slate-200 transition-colors flex items-center space-x-1 text-xs font-bold"
-                    title="Upload New File"
-                  >
-                    <RefreshCw className="h-4.5 w-4.5" />
-                    <span>Re-upload</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Editable textarea */}
-              <textarea
-                rows={10}
-                required
-                value={editedExtractedText}
-                onChange={(e) => setEditedExtractedText(e.target.value)}
-                className="w-full rounded-3xl border border-slate-200 bg-slate-50 py-4 px-5 text-sm leading-relaxed text-slate-700 focus:border-brand-500 focus:bg-white focus:outline-none dark:border-slate-800 dark:bg-[#0F172A] dark:text-slate-205 dark:focus:border-brand-500 transition-all shadow-sm font-sans"
-              />
-            </div>
-
-            <div className="flex justify-between items-center pt-4 border-t border-slate-50 dark:border-slate-800 flex-wrap gap-4">
               <button
-                type="button"
-                onClick={handleReextract}
-                className="px-5 py-3 border border-slate-200 rounded-2xl text-xs font-bold text-slate-550 hover:bg-slate-50 dark:border-slate-800 dark:text-slate-400 dark:hover:bg-[#0F172A] transition-all"
+                type="submit"
+                disabled={
+                  submitting || 
+                  uploading || 
+                  !title.trim() || 
+                  (inputType === 'text' && !question.trim()) || 
+                  (inputType !== 'text' && localFiles.length === 0)
+                }
+                className="rounded-2xl bg-brand-655 bg-gradient-to-r from-brand-600 to-accent-500 px-8 py-3.5 text-sm font-bold text-white shadow-premium hover:opacity-95 transition-all flex items-center space-x-2 disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
               >
-                Cancel & Re-upload
-              </button>
-
-              <button
-                type="button"
-                onClick={handleApproveOCR}
-                disabled={!editedExtractedText.trim() || analyzing}
-                className="rounded-2xl bg-brand-655 bg-gradient-to-r from-brand-600 to-brand-700 px-6 py-3.5 text-sm font-bold text-white shadow-premium hover:bg-brand-755 transition-all flex items-center space-x-2"
-              >
-                {analyzing ? (
+                {submitting ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>AI Analyzing doubt...</span>
+                    <span>Deploying Doubt...</span>
                   </>
                 ) : (
                   <>
-                    <span>Approve & Analyze</span>
+                    <Sparkles className="h-4.5 w-4.5" />
+                    <span>Submit Question</span>
                     <ArrowRight className="h-4 w-4" />
                   </>
                 )}
               </button>
             </div>
-          </div>
-        )}
-
-        {/* ============================================================== */}
-        {/* STEP 6: PREVIEW PRE-SUBMISSION CARD */}
-        {/* ============================================================== */}
-        {activeStep === 'preview' && analysisResult && (
-          <div className="space-y-8 animate-fade-in">
-            <div className="flex items-center space-x-2 text-sm font-bold text-slate-700 dark:text-slate-350 border-b border-slate-50 dark:border-slate-800 pb-2">
-              <Brain className="h-5 w-5 text-brand-500" />
-              <span>Orchestrator AI Classification & Doubt Preview</span>
-            </div>
-
-            {/* Structured Preview Cards */}
-            <div className="grid md:grid-cols-2 gap-6">
-              {/* Left Column: Metadata */}
-              <div className="space-y-4">
-                <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100/60 dark:bg-[#0F172A] dark:border-slate-800/40 space-y-4 shadow-sm">
-                  <div>
-                    <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1">Subject</span>
-                    <span className="text-sm font-extrabold text-slate-800 dark:text-slate-150">
-                      {isCustomSubject ? customSubject : (subjects.find(s => s.code === subjectCode)?.name || 'General')}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1">Detected Topic</span>
-                    <span className="text-sm font-extrabold text-slate-800 dark:text-slate-150">
-                      {analysisResult.topic}
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1">Difficulty</span>
-                      <span className={`text-xs font-extrabold capitalize inline-flex px-2.5 py-1 rounded-lg ${
-                        analysisResult.difficulty === 'easy' ? 'bg-emerald-50 text-emerald-650 dark:bg-emerald-950/20 dark:text-emerald-400' :
-                        analysisResult.difficulty === 'hard' ? 'bg-red-50 text-red-650 dark:bg-red-950/20 dark:text-red-400' :
-                        'bg-amber-50 text-amber-650 dark:bg-amber-950/20 dark:text-amber-400'
-                      }`}>
-                        {analysisResult.difficulty}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1">Input Type</span>
-                      <span className="text-xs font-extrabold capitalize text-slate-600 dark:text-slate-350 block mt-1">
-                        {inputType}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Keywords Tag Card */}
-                {analysisResult.keywords.length > 0 && (
-                  <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100/60 dark:bg-[#0F172A] dark:border-slate-800/40 space-y-2.5 shadow-sm">
-                    <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Generated Keywords</span>
-                    <div className="flex flex-wrap gap-2">
-                      {analysisResult.keywords.map((tag, idx) => (
-                        <span
-                          key={idx}
-                          className="bg-brand-50/50 text-brand-700 px-3 py-1 rounded-full text-[10px] font-extrabold dark:bg-brand-950/20 dark:text-brand-450 border border-brand-100/20"
-                        >
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Right Column: Question Content */}
-              <div className="space-y-4">
-                <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100/60 dark:bg-[#0F172A] dark:border-slate-800/40 h-full flex flex-col shadow-sm">
-                  <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">Question Text</span>
-                  <div className="text-sm text-slate-650 dark:text-slate-300 leading-relaxed font-sans whitespace-pre-wrap overflow-y-auto max-h-56 flex-grow">
-                    {question}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Concept Explanation Card */}
-            {analysisResult.explanation && (
-              <div className="bg-brand-50/25 p-5 rounded-2xl border border-brand-100/30 leading-relaxed dark:bg-[#0F172A] dark:border-slate-850">
-                <span className="text-[10px] font-extrabold text-brand-700 uppercase tracking-wider block mb-1 dark:text-brand-400">AI Concept breakdown</span>
-                <p className="text-xs text-slate-550 dark:text-slate-400">{analysisResult.explanation}</p>
-              </div>
-            )}
-
-            {/* Action Bar */}
-            <div className="flex justify-between items-center pt-4 border-t border-slate-50 dark:border-slate-800 flex-wrap gap-4">
-              <button
-                type="button"
-                onClick={handleBackToEdit}
-                className="px-5 py-3 border border-slate-200 rounded-2xl text-xs font-bold text-slate-550 hover:bg-slate-50 dark:border-slate-800 dark:text-slate-400 dark:hover:bg-[#0F172A] transition-all"
-              >
-                Edit Question
-              </button>
-
-              <button
-                type="button"
-                onClick={handleFinalSubmit}
-                disabled={submitting}
-                className="rounded-2xl bg-brand-655 bg-gradient-to-r from-brand-600 to-accent-500 px-8 py-3.5 text-sm font-bold text-white shadow-premium hover:opacity-95 transition-all flex items-center space-x-2"
-              >
-                {submitting ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>Saving doubt details...</span>
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="h-4.5 w-4.5" />
-                    <span>Deploy Doubt Quest</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        )}
-          </>
-        )}
-
-        {/* ============================================================== */}
-        {/* SUCCESS STATE ANIMATION SCREEN */}
-        {/* ============================================================== */}
-        {activeStep === 'success' && (
+          </form>
+        ) : (
+          /* SUCCESS STATE ANIMATION SCREEN */
           <div className="space-y-8 py-6 text-center animate-fade-in">
             <div className="flex flex-col items-center justify-center space-y-4">
               <div className="h-16 w-16 rounded-full bg-emerald-50 text-emerald-500 dark:bg-emerald-950/20 flex items-center justify-center shadow-sm animate-bounce-soft">
@@ -905,16 +577,16 @@ export const AskDoubt: React.FC = () => {
             {/* AI analysis classifications */}
             {analysisResult && (
               <div className="max-w-xl mx-auto bg-slate-50 p-6 rounded-3xl border border-slate-100/50 text-left dark:bg-[#0F172A] dark:border-slate-800/40 space-y-4">
-                <div className="flex items-center space-x-2 text-xs font-bold text-slate-500 dark:text-slate-400">
+                <div className="flex items-center space-x-2 text-xs font-bold text-slate-550 dark:text-slate-400">
                   <Brain className="h-4.5 w-4.5 text-brand-500" />
                   <span>AI Routing Classification:</span>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-white p-4 rounded-xl border border-slate-100 dark:bg-[#1E293B] dark:border-slate-800">
+                  <div className="bg-white p-4 rounded-xl border border-slate-105 dark:bg-[#1E293B] dark:border-slate-800">
                     <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider block mb-0.5">Topic</span>
                     <span className="text-xs font-bold text-slate-700 dark:text-slate-205">{analysisResult.topic}</span>
                   </div>
-                  <div className="bg-white p-4 rounded-xl border border-slate-100 dark:bg-[#1E293B] dark:border-slate-800">
+                  <div className="bg-white p-4 rounded-xl border border-slate-105 dark:bg-[#1E293B] dark:border-slate-800">
                     <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider block mb-0.5">Difficulty</span>
                     <span className="text-xs font-bold capitalize text-slate-750 dark:text-slate-200">{analysisResult.difficulty}</span>
                   </div>
@@ -951,7 +623,7 @@ export const AskDoubt: React.FC = () => {
             <div className="max-w-md mx-auto pt-4">
               <button
                 onClick={handleDone}
-                className="w-full rounded-2xl bg-brand-600 py-3.5 text-sm font-semibold text-white hover:bg-brand-700 shadow-premium transition-all"
+                className="w-full rounded-2xl bg-brand-600 py-3.5 text-sm font-semibold text-white hover:bg-brand-700 shadow-premium transition-all cursor-pointer"
               >
                 Go to Doubt Feed
               </button>
@@ -959,22 +631,8 @@ export const AskDoubt: React.FC = () => {
           </div>
         )}
       </div>
-
-      {/* Professional AI analyzing modal overlay */}
-      {analyzing && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-850 p-8 rounded-3xl max-w-sm w-full shadow-premium text-center space-y-4 animate-scale-in">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-50 text-brand-600 dark:bg-brand-950/20 dark:text-brand-400 mx-auto shadow-sm">
-              <Loader2 className="h-7 w-7 animate-spin" />
-            </div>
-            <h4 className="text-base font-black text-slate-800 dark:text-slate-100">🤖 AI is analyzing your submission...</h4>
-            <p className="text-xs text-slate-400 font-semibold">Please wait...</p>
-            <div className="h-1.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-              <div className="h-full bg-gradient-to-r from-brand-500 to-accent-400 rounded-full animate-pulse" style={{ width: '60%' }} />
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
+
+export default AskDoubt;

@@ -158,8 +158,8 @@ export const StudentDashboard: React.FC = () => {
             </div>
             {askedDoubts.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-10 space-y-3">
-                <HelpCircle className="h-10 w-10 text-slate-300" />
-                <p className="text-sm text-slate-400 text-center">No doubts asked yet. Need clarification on a topic?</p>
+                <HelpCircle className="h-10 w-10 text-slate-350" />
+                <p className="text-sm text-slate-400 text-center">No recent activity.</p>
                 <Link to="/ask-doubt" className="text-xs font-bold text-brand-600 hover:underline">
                   Ask Your First Doubt
                 </Link>
@@ -210,8 +210,8 @@ export const StudentDashboard: React.FC = () => {
             </div>
             {solvedAnswers.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-10 space-y-3">
-                <Award className="h-10 w-10 text-slate-300" />
-                <p className="text-sm text-slate-400 text-center">No doubts solved yet. Jump on the Doubt Feed to start help routing.</p>
+                <Award className="h-10 w-10 text-slate-350" />
+                <p className="text-sm text-slate-400 text-center">No recent activity.</p>
                 <Link to="/feed" className="text-xs font-bold text-brand-600 hover:underline">
                   Browse Active Doubts
                 </Link>

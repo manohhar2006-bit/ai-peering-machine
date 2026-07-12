@@ -1,5 +1,5 @@
 import { Response } from 'express';
-import { Doubt, Answer, Subject, Escalation, StudentProfile } from '../models/Schemas';
+import { Doubt, Answer, Subject, Escalation, StudentProfile, Notification } from '../models/Schemas';
 import { AuthRequest } from '../middleware/auth';
 import { AIService } from '../services/aiService';
 import { GamificationService } from '../services/gamificationService';
@@ -114,8 +114,8 @@ export const submitAnswer = async (req: AuthRequest, res: Response) => {
 
     // Real-time AI grading evaluation follows.
     try {
-      // Invoke AI evaluation
-      const evaluation = await AIService.evaluateAnswer(doubt.title, doubt.description, content);
+      const queryDescription = doubt.inputType === 'text' || !doubt.inputType ? doubt.description : (doubt.extractedText || doubt.description);
+      const evaluation = await AIService.evaluateAnswer(doubt.title, queryDescription, content);
       const aiEvaluation = {
         correctness: evaluation.correctness,
         clarity: evaluation.clarity,
@@ -516,7 +516,7 @@ export const getDoubtAnswers = async (req: AuthRequest, res: Response) => {
         { solverId: userId }
       ]
     })
-      .populate('solverId', 'name email rollNumber branch section department')
+      .populate('solverId', 'name email rollNumber branch section department role')
       .sort({ isTeacherVerified: -1, isAccepted: -1, 'aiEvaluation.score': -1 });
 
     if (isTeacher) {
@@ -570,6 +570,18 @@ export const getDoubtAnswers = async (req: AuthRequest, res: Response) => {
         responseAnswers.push(ownLatestObj);
       }
 
+      // Also append the official faculty solution if it exists
+      const officialFacultySol = answers.find(ans => ans.isOfficialFacultySolution && !ans.isDraft);
+      if (officialFacultySol) {
+        const offObj = officialFacultySol.toObject() as any;
+        if (offObj.solverId) {
+          offObj.solverName = offObj.solverId.name;
+        } else {
+          offObj.solverName = 'Faculty';
+        }
+        responseAnswers.push(offObj);
+      }
+
       return res.status(200).json({
         unlocked: false,
         message: 'Attempt this question first to unlock community solutions.',
@@ -579,6 +591,9 @@ export const getDoubtAnswers = async (req: AuthRequest, res: Response) => {
 
     // 2. Unlocked: Anonymize and filter
     const filteredAnswers = answers.filter(ans => {
+      // Always include official faculty solution if published
+      if (ans.isOfficialFacultySolution && !ans.isDraft) return true;
+
       const isOwnAnswer = ans.solverId?._id?.toString() === userId;
       if (isOwnAnswer) return true; // Own answers are always visible to owner
 
@@ -595,6 +610,12 @@ export const getDoubtAnswers = async (req: AuthRequest, res: Response) => {
     const anonymizedAnswers = filteredAnswers.map(ans => {
       const ansObj = ans.toObject() as any;
       const solver = ansObj.solverId as any;
+
+      if (ansObj.isOfficialFacultySolution) {
+        ansObj.solverName = solver ? solver.name : 'Faculty';
+        ansObj.solverId = solver ? { _id: solver._id, name: solver.name, role: solver.role } : null;
+        return ansObj;
+      }
 
       // Populate versions for own answer
       if (solver && solver._id.toString() === userId) {
@@ -720,6 +741,92 @@ export const teacherDecision = async (req: AuthRequest, res: Response) => {
   } catch (error) {
     console.error('Teacher decision error:', error);
     res.status(500).json({ message: 'Failed to process teacher decision' });
+  }
+};
+
+export const submitFacultyResolution = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params; // doubt ID
+    const teacherId = req.user?.userId;
+    const {
+      content,
+      inputType,
+      originalUploadUrl,
+      uploadedFiles,
+      isDraft,
+      publishAsCommunitySolution
+    } = req.body;
+
+    const doubt = await Doubt.findById(id);
+    if (!doubt) {
+      return res.status(404).json({ message: 'Doubt not found' });
+    }
+
+    // Find if there is an existing faculty solution (draft or published)
+    let answer = await Answer.findOne({ doubtId: id, isOfficialFacultySolution: true });
+
+    if (!answer) {
+      answer = new Answer({
+        doubtId: id,
+        solverId: teacherId,
+        content: content || '',
+        inputType: inputType || 'text',
+        originalUploadUrl,
+        uploadedFiles,
+        isOfficialFacultySolution: true,
+        isDraft: !!isDraft,
+        isPublished: !isDraft && !!publishAsCommunitySolution,
+        teacherApproved: !isDraft && !!publishAsCommunitySolution,
+        isTeacherVerified: !isDraft,
+        attemptNumber: 1,
+        isLatest: true,
+        versions: []
+      });
+    } else {
+      answer.content = content || '';
+      answer.inputType = inputType || 'text';
+      answer.originalUploadUrl = originalUploadUrl;
+      answer.uploadedFiles = uploadedFiles;
+      answer.isDraft = !!isDraft;
+      answer.isPublished = !isDraft && !!publishAsCommunitySolution;
+      answer.teacherApproved = !isDraft && !!publishAsCommunitySolution;
+      answer.isTeacherVerified = !isDraft;
+      answer.createdAt = new Date();
+    }
+
+    await answer.save();
+
+    // If publishing (not draft), resolve the doubt and escalations
+    if (!isDraft) {
+      doubt.status = 'teacher_solved';
+      doubt.resolvedAt = new Date();
+      doubt.resolvedBy = 'teacher';
+      await doubt.save();
+
+      // Resolve pending escalations
+      await Escalation.findOneAndUpdate(
+        { doubtId: id, status: 'pending' },
+        { status: 'resolved', resolvedAt: new Date() }
+      );
+
+      // Create notification for student
+      const notification = new Notification({
+        recipientId: doubt.askerId,
+        title: 'Doubt Resolved by Faculty',
+        message: `Your doubt "${doubt.title}" has been resolved by faculty. Click to view the official solution.`,
+        type: 'success',
+        isRead: false
+      });
+      await notification.save();
+    }
+
+    res.status(200).json({
+      message: isDraft ? 'Draft saved successfully.' : 'Official solution published successfully.',
+      answer
+    });
+  } catch (error) {
+    console.error('Faculty resolution submission error:', error);
+    res.status(500).json({ message: 'Failed to submit faculty resolution' });
   }
 };
 

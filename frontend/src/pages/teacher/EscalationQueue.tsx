@@ -79,8 +79,8 @@ export const EscalationQueue: React.FC = () => {
                   </div>
 
                   <h3 className="font-bold text-slate-800 text-base dark:text-slate-105">{doubt.title}</h3>
-                  <p className="text-xs text-slate-500 line-clamp-2 dark:text-slate-400 leading-relaxed">
-                    {doubt.description}
+                  <p className="text-xs text-slate-500 line-clamp-2 dark:text-slate-400 leading-relaxed italic">
+                    {doubt.inputType === 'text' ? doubt.description : `[Attached ${doubt.inputType?.toUpperCase()}]`}
                   </p>
 
                   <div className="flex items-center space-x-1.5 text-[10px] text-slate-400 pt-1">

@@ -34,7 +34,10 @@ import {
   Plus,
   UserCheck,
   Activity,
-  Zap
+  Zap,
+  Settings,
+  Save,
+  RotateCcw
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useTheme } from '../../context/ThemeContext';
@@ -52,6 +55,31 @@ export const TeacherDashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
+
+  // Global settings states
+  const [globalAllowCommunity, setGlobalAllowCommunity] = useState(true);
+  const [globalHideUntilFirst, setGlobalHideUntilFirst] = useState(true);
+  const [globalAllowUnlimited, setGlobalAllowUnlimited] = useState(true);
+  const [globalMaxAttempts, setGlobalMaxAttempts] = useState<number | string>('');
+  const [globalAllowEditing, setGlobalAllowEditing] = useState(true);
+  const [globalAiHintLevels, setGlobalAiHintLevels] = useState('three-levels');
+  const [globalEscalationRules, setGlobalEscalationRules] = useState('auto-escalate');
+  
+  // XP Reward configs
+  const [askerXP, setAskerXP] = useState(25);
+  const [solverXP, setSolverXP] = useState(100);
+  const [bonusXP, setBonusXP] = useState(50);
+  const [verificationXP, setVerificationXP] = useState(100);
+  const [streakMultiplier, setStreakMultiplier] = useState(1.5);
+  
+  // Coin Reward configs
+  const [askerCoins, setAskerCoins] = useState(10);
+  const [solverCoins, setSolverCoins] = useState(40);
+  const [bonusCoins, setBonusCoins] = useState(20);
+  const [verificationCoins, setVerificationCoins] = useState(40);
+
+  const [savingGlobalSettings, setSavingGlobalSettings] = useState(false);
+  const [settingsSavedSuccess, setSettingsSavedSuccess] = useState(false);
 
   // New allocation states
   const [studentCount, setStudentCount] = useState(0);
@@ -115,8 +143,77 @@ export const TeacherDashboard: React.FC = () => {
     }
   };
 
+  const fetchGlobalSettings = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/teacher/global-settings`);
+      const s = response.data;
+      setGlobalAllowCommunity(s.allowCommunitySolutions);
+      setGlobalHideUntilFirst(s.hideCommunitySolutionsUntilFirstAttempt);
+      setGlobalAllowUnlimited(s.allowUnlimitedAttempts);
+      setGlobalMaxAttempts(s.maxAttempts ?? '');
+      setGlobalAllowEditing(s.allowAnswerEditing);
+      setGlobalAiHintLevels(s.aiHintLevels || 'three-levels');
+      setGlobalEscalationRules(s.escalationRules || 'auto-escalate');
+      
+      if (s.xpRewardConfig) {
+        setAskerXP(s.xpRewardConfig.askerXP);
+        setSolverXP(s.xpRewardConfig.solverXP);
+        setBonusXP(s.xpRewardConfig.bonusXP);
+        setVerificationXP(s.xpRewardConfig.verificationXP);
+        setStreakMultiplier(s.xpRewardConfig.streakMultiplier);
+      }
+      
+      if (s.coinRewardConfig) {
+        setAskerCoins(s.coinRewardConfig.askerCoins);
+        setSolverCoins(s.coinRewardConfig.solverCoins);
+        setBonusCoins(s.coinRewardConfig.bonusCoins);
+        setVerificationCoins(s.coinRewardConfig.verificationCoins);
+      }
+    } catch (err) {
+      console.error('Failed to load global settings:', err);
+    }
+  };
+
+  const handleSaveGlobalSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingGlobalSettings(true);
+    setSettingsSavedSuccess(false);
+    try {
+      await axios.post(`${API_URL}/teacher/global-settings`, {
+        allowCommunitySolutions: globalAllowCommunity,
+        hideCommunitySolutionsUntilFirstAttempt: globalHideUntilFirst,
+        allowUnlimitedAttempts: globalAllowUnlimited,
+        maxAttempts: globalMaxAttempts === '' ? null : Number(globalMaxAttempts),
+        allowAnswerEditing: globalAllowEditing,
+        aiHintLevels: globalAiHintLevels,
+        escalationRules: globalEscalationRules,
+        xpRewardConfig: {
+          askerXP,
+          solverXP,
+          bonusXP,
+          verificationXP,
+          streakMultiplier
+        },
+        coinRewardConfig: {
+          askerCoins,
+          solverCoins,
+          bonusCoins,
+          verificationCoins
+        }
+      });
+      setSettingsSavedSuccess(true);
+      setTimeout(() => setSettingsSavedSuccess(false), 3000);
+    } catch (err) {
+      console.error('Failed to save settings:', err);
+      alert('Failed to save global configurations');
+    } finally {
+      setSavingGlobalSettings(false);
+    }
+  };
+
   useEffect(() => {
     fetchDashboardData();
+    fetchGlobalSettings();
   }, []);
 
   const handleMarkResolved = async (doubtId: string) => {
@@ -185,11 +282,7 @@ export const TeacherDashboard: React.FC = () => {
   ].filter(d => d.value > 0);
 
   // Fallback if pie is empty
-  const formattedPieData = pieData.length > 0 ? pieData : [
-    { name: 'Peer Solved', value: 70, color: '#10b981' },
-    { name: 'AI Hinted', value: 20, color: '#8b5cf6' },
-    { name: 'Teacher Solved', value: 10, color: '#f97316' }
-  ];
+  const formattedPieData = pieData;
 
   // Calculate circular progress parameters for workload reduction
   const reductionPercent = metricsData.workloadReductionPercent || 0;
@@ -468,7 +561,7 @@ export const TeacherDashboard: React.FC = () => {
 
           <div className="relative border-l-2 border-slate-100 dark:border-slate-800 ml-3 space-y-6">
             {!metricsData?.activityTimeline || metricsData.activityTimeline.length === 0 ? (
-              <div className="text-xs text-slate-400 py-4 font-semibold">No activity available yet.</div>
+              <div className="text-xs text-slate-400 py-4 font-semibold">No activity has been recorded today.</div>
             ) : (
               metricsData.activityTimeline.map((item: any, idx: number) => {
                 const formattedTime = new Date(item.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -582,7 +675,7 @@ export const TeacherDashboard: React.FC = () => {
           <div className="h-64 w-full relative flex items-center justify-center text-xs">
             {formattedPieData.length === 0 ? (
               <div className="text-xs text-slate-400 font-semibold bg-slate-50/50 dark:bg-slate-850/10 w-full h-full flex items-center justify-center rounded-2xl">
-                No activity available yet.
+                No workload data available yet.
               </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
@@ -622,7 +715,7 @@ export const TeacherDashboard: React.FC = () => {
           <div className="h-64 w-full text-xs flex items-center justify-center">
             {weeklyTrendData.length === 0 ? (
               <div className="text-xs text-slate-400 font-semibold bg-slate-50/50 dark:bg-slate-850/10 w-full h-full flex items-center justify-center rounded-2xl">
-                No weekly activity yet.
+                No workload data available yet.
               </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
@@ -653,7 +746,7 @@ export const TeacherDashboard: React.FC = () => {
           <div className="h-64 w-full text-xs flex items-center justify-center">
             {weeklyTrendData.length === 0 ? (
               <div className="text-xs text-slate-400 font-semibold bg-slate-50/50 dark:bg-slate-850/10 w-full h-full flex items-center justify-center rounded-2xl">
-                No weekly activity yet.
+                Time saved statistics will appear after AI resolves student doubts.
               </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
@@ -687,7 +780,7 @@ export const TeacherDashboard: React.FC = () => {
           <div className="h-64 w-full text-xs flex items-center justify-center">
             {heatmapData.length === 0 ? (
               <div className="text-xs text-slate-400 font-semibold bg-slate-50/50 dark:bg-slate-850/10 w-full h-full flex items-center justify-center rounded-2xl">
-                No doubts submitted.
+                No repeated topics found yet.
               </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
@@ -719,7 +812,7 @@ export const TeacherDashboard: React.FC = () => {
 
         {escalations.length === 0 ? (
           <div className="text-center py-8 text-xs text-slate-400">
-            🎉 Great job! No pending escalated doubt tickets in the queue.
+            No escalated doubts at the moment.
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -776,6 +869,234 @@ export const TeacherDashboard: React.FC = () => {
             </table>
           </div>
         )}
+      </div>
+
+      {/* Question Management Section */}
+      <div className="rounded-3xl border border-slate-100 bg-white p-8 shadow-premium dark:bg-[#1E293B] dark:border-slate-800 space-y-6 transition-colors duration-300">
+        <div className="flex items-center space-x-2 pb-3 border-b border-slate-100 dark:border-slate-800">
+          <Settings className="h-6 w-6 text-brand-600 animate-spin-slow" />
+          <div>
+            <h3 className="text-lg font-bold text-slate-805 dark:text-slate-100">Question Management</h3>
+            <p className="text-xs text-slate-400">Configure global doubt solving parameters, AI hinting rules, and gamification rewards.</p>
+          </div>
+        </div>
+
+        {settingsSavedSuccess && (
+          <div className="rounded-2xl bg-emerald-50 p-4 text-xs font-semibold text-emerald-600 dark:bg-emerald-955/20 dark:text-emerald-400 border border-emerald-100/40">
+            ✓ Question settings and reward rules updated and synchronized successfully!
+          </div>
+        )}
+
+        <form onSubmit={handleSaveGlobalSettings} className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            
+            {/* Left Column: Question Settings */}
+            <div className="space-y-4">
+              <h4 className="text-sm font-extrabold text-slate-700 dark:text-slate-205 border-b border-slate-50 dark:border-slate-800/40 pb-1.5">Question Configurations</h4>
+              
+              <div className="flex items-center justify-between text-xs font-semibold text-slate-700 dark:text-slate-300">
+                <label htmlFor="globalAllowCommunity" className="cursor-pointer">Allow community solutions</label>
+                <input 
+                  id="globalAllowCommunity"
+                  type="checkbox" 
+                  checked={globalAllowCommunity} 
+                  onChange={(e) => setGlobalAllowCommunity(e.target.checked)} 
+                  className="h-4.5 w-4.5 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-between text-xs font-semibold text-slate-700 dark:text-slate-300">
+                <label htmlFor="globalHideUntilFirst" className="cursor-pointer">Hide solutions until first attempt</label>
+                <input 
+                  id="globalHideUntilFirst"
+                  type="checkbox" 
+                  checked={globalHideUntilFirst} 
+                  onChange={(e) => setGlobalHideUntilFirst(e.target.checked)} 
+                  className="h-4.5 w-4.5 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-between text-xs font-semibold text-slate-700 dark:text-slate-300">
+                <label htmlFor="globalAllowUnlimited" className="cursor-pointer">Allow unlimited attempts</label>
+                <input 
+                  id="globalAllowUnlimited"
+                  type="checkbox" 
+                  checked={globalAllowUnlimited} 
+                  onChange={(e) => setGlobalAllowUnlimited(e.target.checked)} 
+                  className="h-4.5 w-4.5 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                />
+              </div>
+
+              {!globalAllowUnlimited && (
+                <div className="flex items-center justify-between pl-4 text-xs text-slate-700 dark:text-slate-300">
+                  <label htmlFor="globalMaxAttempts">Set maximum attempts</label>
+                  <input 
+                    id="globalMaxAttempts"
+                    type="number" 
+                    min={1}
+                    value={globalMaxAttempts} 
+                    onChange={(e) => setGlobalMaxAttempts(e.target.value)} 
+                    className="w-20 p-2 border border-slate-200 rounded-xl text-center bg-white dark:bg-slate-900 dark:border-slate-800 font-extrabold focus:outline-none focus:border-brand-500"
+                  />
+                </div>
+              )}
+
+              <div className="flex items-center justify-between text-xs font-semibold text-slate-700 dark:text-slate-300">
+                <label htmlFor="globalAllowEditing" className="cursor-pointer">Allow answer editing</label>
+                <input 
+                  id="globalAllowEditing"
+                  type="checkbox" 
+                  checked={globalAllowEditing} 
+                  onChange={(e) => setGlobalAllowEditing(e.target.checked)} 
+                  className="h-4.5 w-4.5 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                />
+              </div>
+
+              <div className="flex flex-col space-y-1.5 text-xs text-slate-700 dark:text-slate-300">
+                <label htmlFor="globalAiHintLevels" className="font-semibold">AI Hint Levels</label>
+                <select 
+                  id="globalAiHintLevels"
+                  value={globalAiHintLevels}
+                  onChange={(e) => setGlobalAiHintLevels(e.target.value)}
+                  className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-205 dark:border-slate-800 rounded-xl font-medium focus:outline-none focus:border-brand-500"
+                >
+                  <option value="three-levels">Three progressive levels (Small clue, Medium clue, Strong clue)</option>
+                  <option value="two-levels">Two progressive levels (Brief hint, Full strategy)</option>
+                  <option value="single-clue">Single clue level only</option>
+                </select>
+              </div>
+
+              <div className="flex flex-col space-y-1.5 text-xs text-slate-700 dark:text-slate-300">
+                <label htmlFor="globalEscalationRules" className="font-semibold">Escalation Rules</label>
+                <select 
+                  id="globalEscalationRules"
+                  value={globalEscalationRules}
+                  onChange={(e) => setGlobalEscalationRules(e.target.value)}
+                  className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-205 dark:border-slate-800 rounded-xl font-medium focus:outline-none focus:border-brand-500"
+                >
+                  <option value="auto-escalate">Auto-escalate on low AI confidence or contradict outcomes</option>
+                  <option value="manual-only">Manual escalation only by student or teacher</option>
+                  <option value="time-escalate">Auto-escalate after 24 hrs waiting time in Open state</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Right Column: Gamification Configuration */}
+            <div className="space-y-4">
+              <h4 className="text-sm font-extrabold text-slate-700 dark:text-slate-205 border-b border-slate-50 dark:border-slate-800/40 pb-1.5">Gamification & Reward Configurations</h4>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1 text-xs text-slate-700 dark:text-slate-300">
+                  <label htmlFor="askerXP" className="font-semibold">Asker Participation (XP)</label>
+                  <input
+                    id="askerXP"
+                    type="number"
+                    value={askerXP}
+                    onChange={(e) => setAskerXP(Number(e.target.value))}
+                    className="w-full p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:border-brand-500"
+                  />
+                </div>
+                <div className="space-y-1 text-xs text-slate-700 dark:text-slate-300">
+                  <label htmlFor="askerCoins" className="font-semibold">Asker Participation (Coins)</label>
+                  <input
+                    id="askerCoins"
+                    type="number"
+                    value={askerCoins}
+                    onChange={(e) => setAskerCoins(Number(e.target.value))}
+                    className="w-full p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:border-brand-500"
+                  />
+                </div>
+
+                <div className="space-y-1 text-xs text-slate-700 dark:text-slate-300">
+                  <label htmlFor="solverXP" className="font-semibold">Solver Base (XP)</label>
+                  <input
+                    id="solverXP"
+                    type="number"
+                    value={solverXP}
+                    onChange={(e) => setSolverXP(Number(e.target.value))}
+                    className="w-full p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:border-brand-500"
+                  />
+                </div>
+                <div className="space-y-1 text-xs text-slate-700 dark:text-slate-300">
+                  <label htmlFor="solverCoins" className="font-semibold">Solver Base (Coins)</label>
+                  <input
+                    id="solverCoins"
+                    type="number"
+                    value={solverCoins}
+                    onChange={(e) => setSolverCoins(Number(e.target.value))}
+                    className="w-full p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:border-brand-500"
+                  />
+                </div>
+
+                <div className="space-y-1 text-xs text-slate-700 dark:text-slate-300">
+                  <label htmlFor="bonusXP" className="font-semibold">AI Rating Bonus (XP)</label>
+                  <input
+                    id="bonusXP"
+                    type="number"
+                    value={bonusXP}
+                    onChange={(e) => setBonusXP(Number(e.target.value))}
+                    className="w-full p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:border-brand-500"
+                  />
+                </div>
+                <div className="space-y-1 text-xs text-slate-700 dark:text-slate-300">
+                  <label htmlFor="bonusCoins" className="font-semibold">AI Rating Bonus (Coins)</label>
+                  <input
+                    id="bonusCoins"
+                    type="number"
+                    value={bonusCoins}
+                    onChange={(e) => setBonusCoins(Number(e.target.value))}
+                    className="w-full p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:border-brand-500"
+                  />
+                </div>
+
+                <div className="space-y-1 text-xs text-slate-700 dark:text-slate-300">
+                  <label htmlFor="verificationXP" className="font-semibold">Faculty Verification (XP)</label>
+                  <input
+                    id="verificationXP"
+                    type="number"
+                    value={verificationXP}
+                    onChange={(e) => setVerificationXP(Number(e.target.value))}
+                    className="w-full p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:border-brand-500"
+                  />
+                </div>
+                <div className="space-y-1 text-xs text-slate-700 dark:text-slate-300">
+                  <label htmlFor="verificationCoins" className="font-semibold">Faculty Verification (Coins)</label>
+                  <input
+                    id="verificationCoins"
+                    type="number"
+                    value={verificationCoins}
+                    onChange={(e) => setVerificationCoins(Number(e.target.value))}
+                    className="w-full p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:border-brand-500"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1 text-xs text-slate-700 dark:text-slate-300">
+                <label htmlFor="streakMultiplier" className="font-semibold">Streak Multiplier (x)</label>
+                <input
+                  id="streakMultiplier"
+                  type="number"
+                  step="0.1"
+                  value={streakMultiplier}
+                  onChange={(e) => setStreakMultiplier(Number(e.target.value))}
+                  className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:border-brand-500"
+                />
+              </div>
+            </div>
+
+          </div>
+
+          <div className="flex justify-end pt-3 border-t border-slate-50 dark:border-slate-800">
+            <button
+              type="submit"
+              disabled={savingGlobalSettings}
+              className="px-6 py-3 rounded-2xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs shadow-premium transition-all flex items-center space-x-1.5"
+            >
+              <Save className="h-4 w-4" />
+              <span>{savingGlobalSettings ? 'Saving Settings...' : 'Save Configuration'}</span>
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

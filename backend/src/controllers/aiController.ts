@@ -45,6 +45,13 @@ const handleControllerError = (error: any, res: Response, fallbackValue?: any) =
   return res.status(500).json({ message: errMsg || 'Failed to process AI request' });
 };
 
+const getDoubtText = (doubt: any): string => {
+  if (!doubt) return '';
+  return doubt.inputType === 'text' || !doubt.inputType
+    ? `${doubt.title}\n${doubt.description}`
+    : (doubt.extractedText || doubt.title);
+};
+
 // POST /api/ai/analyze-doubt
 export const analyzeDoubt = async (req: AuthRequest, res: Response) => {
   try {
@@ -57,7 +64,7 @@ export const analyzeDoubt = async (req: AuthRequest, res: Response) => {
     if (!doubtText && doubtId) {
       const doubt = await Doubt.findById(doubtId).populate('subjectId');
       if (doubt) {
-        doubtText = `${doubt.title}\n${doubt.description}`;
+        doubtText = getDoubtText(doubt);
         if (!subject) {
           subject = (doubt.subjectId as any)?.name || 'General';
         }
@@ -128,7 +135,7 @@ export const generateHint = async (req: AuthRequest, res: Response) => {
     }
 
     if (!doubtText) {
-      doubtText = `${doubt.title}\n${doubt.description}`;
+      doubtText = getDoubtText(doubt);
     }
 
     const progressiveCount = await HintHistory.countDocuments({ doubtId, userId, ladderIndex: { $gte: 0 } });
@@ -182,7 +189,7 @@ export const chatCoach = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ message: 'Doubt not found' });
     }
 
-    const doubtText = reqDoubtText || `${doubt.title}\n${doubt.description}`;
+    const doubtText = reqDoubtText || getDoubtText(doubt);
     const subject = reqSubject || (doubt.subjectId as any)?.name || 'General';
 
     // Retrieve previous conversation history for context
@@ -248,7 +255,7 @@ export const evaluateAnswer = async (req: AuthRequest, res: Response) => {
     if (doubtId) {
       doubt = await Doubt.findById(doubtId);
       if (doubt && !doubtText) {
-        doubtText = `${doubt.title}\n${doubt.description}`;
+        doubtText = getDoubtText(doubt);
       }
     }
 
@@ -350,7 +357,7 @@ export const referee = async (req: AuthRequest, res: Response) => {
       doubt = await Doubt.findById(doubtId);
       if (doubt) {
         if (!doubtText) {
-          doubtText = `${doubt.title}\n${doubt.description}`;
+          doubtText = getDoubtText(doubt);
         }
         if (!answers) {
           dbAnswers = await Answer.find({ doubtId }).populate('solverId', 'name email');
@@ -509,7 +516,7 @@ export const escalate = async (req: AuthRequest, res: Response) => {
       doubt = await Doubt.findById(doubtId);
       if (doubt) {
         if (!doubtText) {
-          doubtText = `${doubt.title}\n${doubt.description}`;
+          doubtText = getDoubtText(doubt);
         }
         if (attempts === undefined) {
           attempts = await Answer.countDocuments({ doubtId });
@@ -680,7 +687,7 @@ export const getConsensus = async (req: AuthRequest, res: Response) => {
 
     const answersText = answers.map(a => a.content);
     const consensus = await geminiService.generateConsensusAnswer(
-      `${doubt.title}\n${doubt.description}`,
+      getDoubtText(doubt),
       answersText
     );
 

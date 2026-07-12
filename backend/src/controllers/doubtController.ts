@@ -1,25 +1,35 @@
 import mongoose from 'mongoose';
 import { Response } from 'express';
-import { Doubt, Subject, AIAnalysis, User, StudentProfile, Escalation, HintHistory, Answer, RefereeEvaluation } from '../models/Schemas';
+import { Doubt, Subject, AIAnalysis, User, StudentProfile, Escalation, HintHistory, Answer, RefereeEvaluation, GlobalSettings } from '../models/Schemas';
 import { AuthRequest } from '../middleware/auth';
 import { AIService } from '../services/aiService';
 import { GamificationService } from '../services/gamificationService';
 import * as geminiService from '../services/geminiService';
+import fs from 'fs';
+import path from 'path';
+const pdfParse: any = require('pdf-parse');
 
 export const createDoubt = async (req: AuthRequest, res: Response) => {
   try {
     const {
+      title: reqTitle,
+      difficulty: reqDifficulty,
       question,
       inputType = 'text',
       originalUploadUrl,
-      extractedText,
       subjectCode,
       customSubject
     } = req.body;
     const askerId = req.user?.userId;
 
-    if (!question || (!subjectCode && !customSubject)) {
-      return res.status(400).json({ message: 'Question text and subject details are required' });
+    if (inputType === 'text' && !question) {
+      return res.status(400).json({ message: 'Question text is required' });
+    }
+    if (inputType !== 'text' && !originalUploadUrl) {
+      return res.status(400).json({ message: 'Uploaded file is required' });
+    }
+    if (!subjectCode && !customSubject) {
+      return res.status(400).json({ message: 'Subject details are required' });
     }
 
     // Resolve or create subject
@@ -46,32 +56,114 @@ export const createDoubt = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ message: 'Subject not resolved' });
     }
 
-    // Generate title (compatibility) and description
-    const title = question.length > 80 ? question.substring(0, 80) + '...' : question;
-    const description = question;
+    // Perform internal OCR / Text extraction if inputType is image or pdf
+    let internalExtractedText = '';
+    if (inputType !== 'text' && originalUploadUrl) {
+      let urls: string[] = [];
+      if (originalUploadUrl.startsWith('[')) {
+        try {
+          urls = JSON.parse(originalUploadUrl);
+        } catch (e) {
+          urls = [originalUploadUrl];
+        }
+      } else {
+        urls = [originalUploadUrl];
+      }
+
+      for (const url of urls) {
+        const urlParts = url.split('/uploads/');
+        if (urlParts.length > 1) {
+          const filename = urlParts[1];
+          const filePath = path.join(process.cwd(), 'uploads', filename);
+          if (fs.existsSync(filePath)) {
+            try {
+              const fileBuffer = fs.readFileSync(filePath);
+              const ext = path.extname(filename).toLowerCase();
+              let mimeType = 'image/jpeg';
+              if (ext === '.png') mimeType = 'image/png';
+              else if (ext === '.webp') mimeType = 'image/webp';
+              else if (ext === '.pdf') mimeType = 'application/pdf';
+
+              if (mimeType === 'application/pdf') {
+                try {
+                  const parsed = await pdfParse(fileBuffer);
+                  const directText = parsed.text ? parsed.text.trim() : '';
+                  if (directText.length > 20) {
+                    const cleanedText = await geminiService.cleanPdfText(directText);
+                    internalExtractedText += cleanedText + '\n';
+                  } else {
+                    const ocrText = await geminiService.extractTextFromMedia(fileBuffer, mimeType);
+                    internalExtractedText += ocrText + '\n';
+                  }
+                } catch (pdfError) {
+                  console.warn('pdf-parse failed in createDoubt, fallback to Gemini OCR:', pdfError);
+                  const ocrText = await geminiService.extractTextFromMedia(fileBuffer, mimeType);
+                  internalExtractedText += ocrText + '\n';
+                }
+              } else {
+                const ocrText = await geminiService.extractTextFromMedia(fileBuffer, mimeType);
+                internalExtractedText += ocrText + '\n';
+              }
+            } catch (err) {
+              console.error(`Failed to extract text from file ${filename}:`, err);
+            }
+          }
+        }
+      }
+      internalExtractedText = internalExtractedText.trim();
+    }
+
+    // Resolve Title
+    let finalTitle = reqTitle || '';
+    if (!finalTitle) {
+      const sourceText = inputType === 'text' ? question : internalExtractedText;
+      finalTitle = sourceText.length > 80 ? sourceText.substring(0, 80) + '...' : sourceText;
+    }
+    if (!finalTitle) {
+      finalTitle = `Doubt Quest: ${inputType.toUpperCase()} upload`;
+    }
+
+    // Resolve Question & Description
+    // We only store the original question text for type text, and the title for others.
+    // Raw OCR text is stored in extractedText field only.
+    const finalQuestion = inputType === 'text' ? question : finalTitle;
+    const finalDescription = inputType === 'text' ? question : finalTitle;
 
     // Generate stable anonymousId for asker
     const anonNum = parseInt(askerId!.toString().slice(-4), 16) % 1000;
     const anonymousId = `Student #${anonNum}`;
 
+    // Load Global Settings
+    let globalSettings = await GlobalSettings.findOne();
+    if (!globalSettings) {
+      globalSettings = new GlobalSettings();
+      await globalSettings.save();
+    }
+
     // 1. Save initial doubt
     const doubt = new Doubt({
-      title,
-      description,
-      question,
+      title: finalTitle,
+      description: finalDescription,
+      question: finalQuestion,
       inputType,
       originalUploadUrl,
-      extractedText,
+      extractedText: internalExtractedText || undefined,
       fileUrl: originalUploadUrl, // sync for backwards compatibility
       askerId,
       subjectId: subject._id,
       status: 'open',
-      anonymousId
+      anonymousId,
+      allowCommunitySolutions: globalSettings.allowCommunitySolutions,
+      hideCommunitySolutionsUntilFirstAttempt: globalSettings.hideCommunitySolutionsUntilFirstAttempt,
+      allowUnlimitedAttempts: globalSettings.allowUnlimitedAttempts,
+      maxAttempts: globalSettings.maxAttempts,
+      allowAnswerEditing: globalSettings.allowAnswerEditing
     });
     await doubt.save();
 
-    // 2. Invoke detailed AI analysis
-    const analysisResult = await geminiService.analyzeDoubtDetailed(question, subject.name);
+    // 2. Invoke detailed AI analysis (using internal extracted text if uploaded file)
+    const textToAnalyze = inputType === 'text' ? question : (internalExtractedText || finalTitle);
+    const analysisResult = await geminiService.analyzeDoubtDetailed(textToAnalyze, subject.name);
 
     // 3. Save AI Analysis
     const aiAnalysis = new AIAnalysis({
@@ -85,7 +177,7 @@ export const createDoubt = async (req: AuthRequest, res: Response) => {
 
     // Update doubt details with AI classifications and keywords
     doubt.topic = analysisResult.topic;
-    doubt.difficulty = analysisResult.difficulty;
+    doubt.difficulty = reqDifficulty || analysisResult.difficulty || 'medium';
     doubt.keywords = analysisResult.keywords || [];
     
     // 4. Peer Routing suggestions
@@ -476,5 +568,55 @@ export const grantStudentPermission = async (req: AuthRequest, res: Response) =>
   } catch (error) {
     console.error('Grant student permission error:', error);
     res.status(500).json({ message: 'Failed to grant permission to student' });
+  }
+};
+
+export const getGlobalSettings = async (req: AuthRequest, res: Response) => {
+  try {
+    let settings = await GlobalSettings.findOne();
+    if (!settings) {
+      settings = new GlobalSettings();
+      await settings.save();
+    }
+    res.status(200).json(settings);
+  } catch (error) {
+    console.error('Get global settings error:', error);
+    res.status(500).json({ message: 'Failed to retrieve global settings' });
+  }
+};
+
+export const saveGlobalSettings = async (req: AuthRequest, res: Response) => {
+  try {
+    let settings = await GlobalSettings.findOne();
+    if (!settings) {
+      settings = new GlobalSettings();
+    }
+    const {
+      allowCommunitySolutions,
+      hideCommunitySolutionsUntilFirstAttempt,
+      allowUnlimitedAttempts,
+      maxAttempts,
+      allowAnswerEditing,
+      aiHintLevels,
+      escalationRules,
+      xpRewardConfig,
+      coinRewardConfig
+    } = req.body;
+
+    if (allowCommunitySolutions !== undefined) settings.allowCommunitySolutions = allowCommunitySolutions;
+    if (hideCommunitySolutionsUntilFirstAttempt !== undefined) settings.hideCommunitySolutionsUntilFirstAttempt = hideCommunitySolutionsUntilFirstAttempt;
+    if (allowUnlimitedAttempts !== undefined) settings.allowUnlimitedAttempts = allowUnlimitedAttempts;
+    settings.maxAttempts = maxAttempts === '' || maxAttempts === undefined ? null : Number(maxAttempts);
+    if (allowAnswerEditing !== undefined) settings.allowAnswerEditing = allowAnswerEditing;
+    if (aiHintLevels !== undefined) settings.aiHintLevels = aiHintLevels;
+    if (escalationRules !== undefined) settings.escalationRules = escalationRules;
+    if (xpRewardConfig !== undefined) settings.xpRewardConfig = xpRewardConfig;
+    if (coinRewardConfig !== undefined) settings.coinRewardConfig = coinRewardConfig;
+
+    await settings.save();
+    res.status(200).json({ message: 'Global settings updated successfully', settings });
+  } catch (error) {
+    console.error('Save global settings error:', error);
+    res.status(500).json({ message: 'Failed to save global settings' });
   }
 };
