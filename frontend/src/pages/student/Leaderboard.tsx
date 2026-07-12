@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { Trophy, Flame, Star, Award, Search } from 'lucide-react';
 
-const API_URL = 'http://localhost:5000/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_URL = `${API_BASE_URL}/api`;
 
 export const Leaderboard: React.FC = () => {
   const [leaderboard, setLeaderboard] = useState<any[]>([]);

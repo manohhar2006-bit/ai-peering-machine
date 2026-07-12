@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { X, UserPlus, AlertCircle, Loader2 } from 'lucide-react';
 
-const API_URL = 'http://localhost:5000/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_URL = `${API_BASE_URL}/api`;
 
 interface AddManuallyModalProps {
   isOpen: boolean;

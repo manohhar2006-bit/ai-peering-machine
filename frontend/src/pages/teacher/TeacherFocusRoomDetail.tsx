@@ -25,7 +25,8 @@ import {
   HelpCircle
 } from 'lucide-react';
 
-const API_URL = 'http://localhost:5000/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_URL = `${API_BASE_URL}/api`;
 
 interface Student {
   _id: string;
@@ -307,7 +308,7 @@ export const TeacherFocusRoomDetail: React.FC = () => {
           title: uploadTitle,
           description: uploadDesc,
           fileType: uploadType,
-          fileUrl: uploadUrl || 'http://localhost:5000/mock/slides.pdf'
+          fileUrl: uploadUrl || `${API_BASE_URL}/mock/slides.pdf`
         },
         { headers: { Authorization: `Bearer ${token}` } }
       );

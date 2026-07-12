@@ -3,7 +3,8 @@ import { useAuth } from '../../context/AuthContext';
 import axios from 'axios';
 import { User, Award, Flame, BookOpen, Star, Sparkles, HelpCircle, CheckCircle, Brain } from 'lucide-react';
 
-const API_URL = 'http://localhost:5000/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_URL = `${API_BASE_URL}/api`;
 
 export const Profile: React.FC = () => {
   const { user, studentProfile, refreshProfile } = useAuth();
