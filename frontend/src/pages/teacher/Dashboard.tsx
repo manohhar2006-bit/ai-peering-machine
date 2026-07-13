@@ -42,7 +42,9 @@ import {
 import { Link } from 'react-router-dom';
 import { useTheme } from '../../context/ThemeContext';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const isProd = import.meta.env.PROD || import.meta.env.MODE === 'production';
+const defaultApiUrl = isProd ? 'https://ai-peering-machine.onrender.com/api' : 'http://localhost:5000';
+const API_BASE_URL = (import.meta.env.VITE_API_URL || defaultApiUrl).replace(/\/api$/, '');
 const API_URL = `${API_BASE_URL}/api`;
 
 export const TeacherDashboard: React.FC = () => {

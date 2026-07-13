@@ -23,10 +23,40 @@ connectDB();
 initCronJobs();
 
 // Middleware
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://localhost:3000'
+];
+
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:3000'],
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps, curl, postman, health checks)
+    if (!origin) {
+      return callback(null, true);
+    }
+    
+    // Check if origin matches localhost origins
+    const isLocal = origin.startsWith('http://localhost:') || 
+                    origin.startsWith('http://127.0.0.1:');
+                    
+    // Check if origin matches FRONTEND_URL from environment variable
+    const frontendUrl = process.env.FRONTEND_URL;
+    let isAllowedEnv = false;
+    if (frontendUrl) {
+      const urls = frontendUrl.split(',').map(url => url.trim());
+      isAllowedEnv = urls.includes(origin);
+    }
+    
+    if (isLocal || isAllowedEnv || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.warn(`CORS blocked request from origin: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(express.json());
@@ -52,11 +82,16 @@ const server = app.listen(PORT);
 
 server.on('listening', () => {
   const env = process.env.NODE_ENV || 'development';
+  const isProd = env === 'production';
+  const apiUrl = isProd 
+    ? 'https://ai-peering-machine.onrender.com/api' 
+    : `http://localhost:${PORT}/api`;
+
   console.log(`=========================================`);
   console.log(`Server started successfully!`);
   console.log(`Current Port : ${PORT}`);
   console.log(`Environment  : ${env}`);
-  console.log(`API URL      : http://localhost:${PORT}/api`);
+  console.log(`API URL      : ${apiUrl}`);
   console.log(`=========================================`);
 });
 
